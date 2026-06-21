@@ -6,9 +6,7 @@ spring:
 
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://127.0.0.1:3306/smartam?useUnicode=true&characterEncoding=utf8mb4&serverTimezone=Asia/Shanghai
-    username: root
-    password: 11223344a
+    url: jdbc:mysql://127.0.0.1:3306/smartam?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
 
 mybatis-plus:
   configuration:
