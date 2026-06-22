@@ -1,6 +1,7 @@
 package com.chengmaomao.smartam.tenant.entity;
 
 import com.chengmaomao.smartam.common.base.BaseEntity;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -11,6 +12,7 @@ public class User extends BaseEntity {
     private Long regionId;
     private Long deptId;
     private String username;
+    @JsonIgnore
     private String password;
     private String realName;
     private String phone;
