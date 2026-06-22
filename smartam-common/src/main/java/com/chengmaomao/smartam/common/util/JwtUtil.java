@@ -22,10 +22,13 @@ public final class JwtUtil {
     }
 
     /** 签发 Token */
-    public static String generate(Long userId, Long tenantId, String username, String role) {
+    public static String generate(Long userId, Long tenantId, Long regionId, Long deptId,
+                                  String username, String role) {
         Date now = new Date();
         return Jwts.builder()
-                .claims(Map.of("userId", userId, "tenantId", tenantId))
+                .claims(Map.of("userId", userId, "tenantId", tenantId,
+                        "regionId", regionId != null ? regionId : 0,
+                        "deptId", deptId != null ? deptId : 0))
                 .subject(username)
                 .claim("role", role)
                 .issuedAt(now)
