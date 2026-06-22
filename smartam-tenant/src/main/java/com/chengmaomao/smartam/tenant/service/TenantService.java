@@ -3,6 +3,7 @@ package com.chengmaomao.smartam.tenant.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.chengmaomao.smartam.common.exception.BusinessException;
 import com.chengmaomao.smartam.tenant.dto.RegisterTenantRequest;
+import com.chengmaomao.smartam.tenant.dto.RegisterTenantResponse;
 import com.chengmaomao.smartam.tenant.entity.Region;
 import com.chengmaomao.smartam.tenant.entity.RoleEnum;
 import com.chengmaomao.smartam.tenant.entity.Tenant;
@@ -25,7 +26,7 @@ public class TenantService {
     private final PasswordEncoder passwordEncoder;
 
     @Transactional
-    public Tenant register(RegisterTenantRequest req) {
+    public RegisterTenantResponse register(RegisterTenantRequest req) {
         // 1. 校验公司标识唯一
         Long count = tenantMapper.selectCount(
                 new LambdaQueryWrapper<Tenant>().eq(Tenant::getCode, req.getCompanyCode()));
@@ -54,12 +55,14 @@ public class TenantService {
         admin.setTenantId(tenant.getId());
         admin.setRegionId(region.getId());
         admin.setUsername(req.getAdminUsername());
-        admin.setPassword(passwordEncoder.encode(req.getPassword()));
-        admin.setRealName(req.getRealName());
+        admin.setPassword(passwordEncoder.encode(req.getAdminPassword()));
+        admin.setRealName(req.getAdminRealName());
+        admin.setPhone(req.getAdminPhone());
+        admin.setEmail(req.getAdminEmail());
         admin.setRole(RoleEnum.ADMIN_TENANT);
         admin.setStatus(1);
         userMapper.insert(admin);
 
-        return tenant;
+        return new RegisterTenantResponse(tenant.getId(), tenant.getName(), admin.getId());
     }
 }

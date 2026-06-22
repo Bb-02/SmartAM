@@ -2,7 +2,7 @@ package com.chengmaomao.smartam.tenant.controller;
 
 import com.chengmaomao.smartam.common.result.ApiResponse;
 import com.chengmaomao.smartam.tenant.dto.RegisterTenantRequest;
-import com.chengmaomao.smartam.tenant.entity.Tenant;
+import com.chengmaomao.smartam.tenant.dto.RegisterTenantResponse;
 import com.chengmaomao.smartam.tenant.service.TenantService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -19,8 +19,7 @@ public class TenantController {
     private final TenantService tenantService;
 
     @PostMapping("/register")
-    public ApiResponse<Tenant> register(@Valid @RequestBody RegisterTenantRequest req) {
-        Tenant tenant = tenantService.register(req);
-        return ApiResponse.ok(tenant);
+    public ApiResponse<RegisterTenantResponse> register(@Valid @RequestBody RegisterTenantRequest req) {
+        return ApiResponse.ok(tenantService.register(req));
     }
 }
