@@ -49,7 +49,8 @@ public class AuthService {
 
         // 5. 签发 JWT
         String token = JwtUtil.generate(
-                user.getId(), tenant.getId(), user.getUsername(), user.getRole());
+                user.getId(), tenant.getId(), user.getRegionId(), user.getDeptId(),
+                user.getUsername(), user.getRole());
 
         return new LoginResponse(token, user.getId(), user.getUsername(), user.getRole(), user.getRealName());
     }
