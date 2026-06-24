@@ -9,6 +9,7 @@ import java.time.LocalDate;
 @Data
 public class AssetCreateRequest {
 
+    private Long regionId;
     private Long deptId;
     private Long userId;
 

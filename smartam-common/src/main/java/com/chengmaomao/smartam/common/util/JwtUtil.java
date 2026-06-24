@@ -3,19 +3,25 @@ package com.chengmaomao.smartam.common.util;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.Map;
 
+@Component
 public final class JwtUtil {
 
-    private JwtUtil() {}
+    private static String SECRET;
+    private static long EXPIRATION_MS;
 
-    // 密钥（后续迁移到配置）
-    private static final String SECRET = "smartam-jwt-secret-key-2026-min-256-bits!!";
-    private static final long EXPIRATION_MS = 24 * 60 * 60 * 1000L; // 24小时
+    public JwtUtil(@Value("${jwt.secret:smartam-jwt-secret-key-2026-min-256-bits!!}") String secret,
+                   @Value("${jwt.expiration-ms:86400000}") long expirationMs) {
+        JwtUtil.SECRET = secret;
+        JwtUtil.EXPIRATION_MS = expirationMs;
+    }
 
     private static SecretKey getKey() {
         return Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8));

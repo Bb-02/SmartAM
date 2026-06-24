@@ -7,6 +7,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -15,6 +16,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.List;
 
+@Slf4j
 public class JwtAuthFilter extends OncePerRequestFilter {
 
     @Override
@@ -42,8 +44,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                             user, null, List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole())));
 
             SecurityContextHolder.getContext().setAuthentication(authentication);
-        } catch (Exception ignored) {
-            // Token invalid or expired, leave context unauthenticated
+        } catch (Exception e) {
+            log.debug("JWT 解析失败: {}", e.getMessage());
         }
 
         filterChain.doFilter(request, response);

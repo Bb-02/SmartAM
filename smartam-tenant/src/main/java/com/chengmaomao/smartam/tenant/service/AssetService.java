@@ -72,7 +72,12 @@ public class AssetService {
 
         Asset asset = new Asset();
         asset.setTenantId(user.getTenantId());
-        asset.setRegionId(user.getRegionId());
+        // ADMIN_TENANT 可指定分区，否则用自身分区
+        if (RoleEnum.ADMIN_TENANT.equals(user.getRole()) && req.getRegionId() != null) {
+            asset.setRegionId(req.getRegionId());
+        } else {
+            asset.setRegionId(user.getRegionId());
+        }
         asset.setDeptId(req.getDeptId());
         asset.setUserId(req.getUserId());
         asset.setName(req.getName());

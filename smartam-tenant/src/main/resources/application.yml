@@ -19,6 +19,12 @@ mybatis-plus:
       logic-delete-value: 1
       logic-not-delete-value: 0
 
+# JWT
+jwt:
+  # 生产环境通过环境变量覆盖: JWT_SECRET
+  secret: smartam-jwt-secret-key-2026-min-256-bits!!
+  expiration-ms: 86400000
+
 server:
   port: 8080
 
