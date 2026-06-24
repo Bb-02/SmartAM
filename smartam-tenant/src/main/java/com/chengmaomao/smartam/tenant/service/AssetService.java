@@ -9,8 +9,10 @@ import com.chengmaomao.smartam.tenant.dto.AssetCreateRequest;
 import com.chengmaomao.smartam.tenant.dto.AssetResponse;
 import com.chengmaomao.smartam.tenant.dto.AssetUpdateRequest;
 import com.chengmaomao.smartam.tenant.entity.Asset;
+import com.chengmaomao.smartam.tenant.entity.AssetLog;
 import com.chengmaomao.smartam.tenant.entity.AssetStatus;
 import com.chengmaomao.smartam.tenant.entity.RoleEnum;
+import com.chengmaomao.smartam.tenant.mapper.AssetLogMapper;
 import com.chengmaomao.smartam.tenant.mapper.AssetMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -18,11 +20,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 public class AssetService {
 
     private final AssetMapper assetMapper;
+    private final AssetLogMapper assetLogMapper;
 
     private JwtUser currentUser() {
         return (JwtUser) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -94,6 +100,10 @@ public class AssetService {
         asset.setWarrantyEnd(req.getWarrantyEnd());
         asset.setDescription(req.getDescription());
         assetMapper.insert(asset);
+
+        writeLog(asset, user.getUserId(), "CREATE",
+                asset.getName() + "（" + asset.getCode() + "）入库，品类 " + asset.getCategory(), null);
+
         return toResponse(asset);
     }
 
@@ -133,42 +143,106 @@ public class AssetService {
 
     @Transactional
     public AssetResponse update(Long id, AssetUpdateRequest req) {
-        Asset asset = getOwnedAsset(id);
+        Asset old = getOwnedAsset(id);
         JwtUser user = currentUser();
         if (RoleEnum.EMPLOYEE.equals(user.getRole()) || RoleEnum.ENGINEER.equals(user.getRole())) {
             throw new BusinessException("无权限编辑资产");
         }
 
+        // 保存旧值用于变更日志
+        String oldStatus = old.getStatus();
+        Long oldRegionId = old.getRegionId();
+        Long oldDeptId = old.getDeptId();
+        Long oldUserId = old.getUserId();
+
         if (req.getRegionId() != null) {
             if (RoleEnum.ADMIN_TENANT.equals(user.getRole())) {
-                asset.setRegionId(req.getRegionId());
+                old.setRegionId(req.getRegionId());
             } else {
                 throw new BusinessException("仅租户管理员可变更资产归属分区");
             }
         }
-        if (req.getDeptId() != null) asset.setDeptId(req.getDeptId());
-        if (req.getUserId() != null) asset.setUserId(req.getUserId());
-        if (req.getName() != null) asset.setName(req.getName());
-        if (req.getCode() != null) asset.setCode(req.getCode());
-        if (req.getCategory() != null) asset.setCategory(req.getCategory());
-        if (req.getModel() != null) asset.setModel(req.getModel());
-        if (req.getBrand() != null) asset.setBrand(req.getBrand());
-        if (req.getPrice() != null) asset.setPrice(req.getPrice());
-        if (req.getQuantity() != null) asset.setQuantity(req.getQuantity());
-        if (req.getUnit() != null) asset.setUnit(req.getUnit());
+        if (req.getDeptId() != null) old.setDeptId(req.getDeptId());
+        if (req.getUserId() != null) old.setUserId(req.getUserId());
+        if (req.getName() != null) old.setName(req.getName());
+        if (req.getCode() != null) old.setCode(req.getCode());
+        if (req.getCategory() != null) old.setCategory(req.getCategory());
+        if (req.getModel() != null) old.setModel(req.getModel());
+        if (req.getBrand() != null) old.setBrand(req.getBrand());
+        if (req.getPrice() != null) old.setPrice(req.getPrice());
+        if (req.getQuantity() != null) old.setQuantity(req.getQuantity());
+        if (req.getUnit() != null) old.setUnit(req.getUnit());
         if (req.getStatus() != null) {
             if (!AssetStatus.isValid(req.getStatus())) {
                 throw new BusinessException("无效的资产状态: " + req.getStatus());
             }
-            asset.setStatus(req.getStatus());
+            old.setStatus(req.getStatus());
         }
-        if (req.getLocation() != null) asset.setLocation(req.getLocation());
-        if (req.getPurchaseDate() != null) asset.setPurchaseDate(req.getPurchaseDate());
-        if (req.getWarrantyEnd() != null) asset.setWarrantyEnd(req.getWarrantyEnd());
-        if (req.getDescription() != null) asset.setDescription(req.getDescription());
+        if (req.getLocation() != null) old.setLocation(req.getLocation());
+        if (req.getPurchaseDate() != null) old.setPurchaseDate(req.getPurchaseDate());
+        if (req.getWarrantyEnd() != null) old.setWarrantyEnd(req.getWarrantyEnd());
+        if (req.getDescription() != null) old.setDescription(req.getDescription());
 
-        assetMapper.updateById(asset);
-        return toResponse(asset);
+        // 构建变更描述
+        List<String> changes = new ArrayList<>();
+        if (!oldStatus.equals(old.getStatus())) {
+            String action = inferAction(oldStatus, old.getStatus());
+            changes.add("状态: " + oldStatus + " → " + old.getStatus());
+        }
+        if (!oldDeptId.equals(old.getDeptId())) {
+            changes.add("部门: " + desc(oldDeptId) + " → " + desc(old.getDeptId()));
+        }
+        if (!oldUserId.equals(old.getUserId())) {
+            changes.add("领用人: " + desc(oldUserId) + " → " + desc(old.getUserId()));
+        }
+        if (!oldRegionId.equals(old.getRegionId())) {
+            changes.add("分区: " + desc(oldRegionId) + " → " + desc(old.getRegionId()));
+        }
+
+        assetMapper.updateById(old);
+
+        if (!changes.isEmpty()) {
+            String action = inferAction(oldStatus, old.getStatus());
+            writeLog(old, user.getUserId(), action, String.join("; ", changes), null);
+        }
+
+        return toResponse(old);
+    }
+
+    private String inferAction(String fromStatus, String toStatus) {
+        if (AssetStatus.IN_STORAGE.equals(fromStatus) && AssetStatus.IN_USE.equals(toStatus)) return "ASSIGN";
+        if (AssetStatus.IN_USE.equals(fromStatus) && AssetStatus.IN_STORAGE.equals(toStatus)) return "RETURN";
+        if (AssetStatus.IN_USE.equals(fromStatus) && AssetStatus.IN_REPAIR.equals(toStatus)) return "REPAIR";
+        if (AssetStatus.IN_REPAIR.equals(fromStatus) && AssetStatus.IN_USE.equals(toStatus)) return "REPAIR_DONE";
+        if (AssetStatus.SCRAPPED.equals(toStatus)) return "SCRAP";
+        return "UPDATE";
+    }
+
+    private static String desc(Object val) {
+        return val == null ? "空" : val.toString();
+    }
+
+    private void writeLog(Asset asset, Long operatorId, String action, String description, String remark) {
+        AssetLog log = new AssetLog();
+        log.setTenantId(asset.getTenantId());
+        log.setAssetId(asset.getId());
+        log.setOperatorId(operatorId);
+        log.setAction(action);
+        log.setDescription(description);
+        log.setRemark(remark);
+        assetLogMapper.insert(log);
+    }
+
+    public List<AssetLog> getLogs(Long assetId) {
+        Asset asset = getOwnedAsset(assetId);
+        JwtUser user = currentUser();
+        if (RoleEnum.EMPLOYEE.equals(user.getRole())
+                && !asset.getDeptId().equals(user.getDeptId())) {
+            throw new BusinessException("无权查看该资产");
+        }
+        return assetLogMapper.selectList(new LambdaQueryWrapper<AssetLog>()
+                .eq(AssetLog::getAssetId, assetId)
+                .orderByDesc(AssetLog::getCreatedAt));
     }
 
     @Transactional

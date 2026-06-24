@@ -5,6 +5,7 @@ import com.chengmaomao.smartam.common.result.ApiResponse;
 import com.chengmaomao.smartam.tenant.dto.AssetCreateRequest;
 import com.chengmaomao.smartam.tenant.dto.AssetResponse;
 import com.chengmaomao.smartam.tenant.dto.AssetUpdateRequest;
+import com.chengmaomao.smartam.tenant.entity.AssetLog;
 import com.chengmaomao.smartam.tenant.service.AssetService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +18,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/assets")
@@ -50,6 +53,11 @@ public class AssetController {
     public ApiResponse<AssetResponse> update(@PathVariable Long id,
                                              @RequestBody AssetUpdateRequest req) {
         return ApiResponse.ok(assetService.update(id, req));
+    }
+
+    @GetMapping("/{id}/logs")
+    public ApiResponse<List<AssetLog>> getLogs(@PathVariable Long id) {
+        return ApiResponse.ok(assetService.getLogs(id));
     }
 
     @DeleteMapping("/{id}")
