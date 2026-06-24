@@ -61,8 +61,23 @@ public class UserService {
         if (!RoleEnum.ADMIN_REGION.equals(me.getRole()) && !RoleEnum.ADMIN_TENANT.equals(me.getRole())) {
             throw new BusinessException("无权限创建用户");
         }
-        if (!RoleEnum.EMPLOYEE.equals(req.getRole()) && !RoleEnum.ENGINEER.equals(req.getRole())) {
-            throw new BusinessException("只能创建员工或工程师账号");
+        // ADMIN_TENANT 可创建 ADMIN_REGION / ENGINEER / EMPLOYEE
+        // ADMIN_REGION 只能创建 ENGINEER / EMPLOYEE
+        if (RoleEnum.ADMIN_TENANT.equals(me.getRole())) {
+            if (RoleEnum.ADMIN_TENANT.equals(req.getRole())) {
+                throw new BusinessException("不能创建租户管理员账号");
+            }
+            if (RoleEnum.ADMIN_REGION.equals(req.getRole()) && req.getRegionId() == null) {
+                throw new BusinessException("创建分区管理员需指定所属分区");
+            }
+        } else {
+            if (!RoleEnum.EMPLOYEE.equals(req.getRole()) && !RoleEnum.ENGINEER.equals(req.getRole())) {
+                throw new BusinessException("只能创建员工或工程师账号");
+            }
+        }
+        // EMPLOYEE 必须归属部门
+        if (RoleEnum.EMPLOYEE.equals(req.getRole()) && req.getDeptId() == null) {
+            throw new BusinessException("创建员工需指定所属部门");
         }
 
         // 检查 username 在租户内唯一
@@ -75,7 +90,7 @@ public class UserService {
 
         User user = new User();
         user.setTenantId(me.getTenantId());
-        // ADMIN_REGION 强制用自己的 region
+        // ADMIN_REGION 强制用自己的 region；ADMIN_TENANT 可指定
         user.setRegionId(RoleEnum.ADMIN_REGION.equals(me.getRole())
                 ? me.getRegionId()
                 : (req.getRegionId() != null ? req.getRegionId() : me.getRegionId()));
