@@ -103,6 +103,7 @@ public class UserService {
         user.setEmail(req.getEmail());
         user.setStatus(1);
         userMapper.insert(user);
+        user = userMapper.selectById(user.getId());
         return toResponse(user);
     }
 

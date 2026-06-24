@@ -96,6 +96,7 @@ public class WorkOrderService {
         wo.setPriority(req.getPriority() != null ? req.getPriority() : "NORMAL");
         wo.setStatus(WorkOrderStatus.PENDING);
         workOrderMapper.insert(wo);
+        wo = workOrderMapper.selectById(wo.getId());
 
         writeLog(wo.getId(), null, WorkOrderStatus.PENDING, me.getUserId(), null);
         return toResponse(wo);

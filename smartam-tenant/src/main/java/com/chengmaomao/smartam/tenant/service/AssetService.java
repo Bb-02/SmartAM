@@ -22,6 +22,7 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -100,6 +101,7 @@ public class AssetService {
         asset.setWarrantyEnd(req.getWarrantyEnd());
         asset.setDescription(req.getDescription());
         assetMapper.insert(asset);
+        asset = assetMapper.selectById(asset.getId());
 
         writeLog(asset, user.getUserId(), "CREATE",
                 asset.getName() + "（" + asset.getCode() + "）入库，品类 " + asset.getCategory(), null);
@@ -185,17 +187,16 @@ public class AssetService {
 
         // 构建变更描述
         List<String> changes = new ArrayList<>();
-        if (!oldStatus.equals(old.getStatus())) {
-            String action = inferAction(oldStatus, old.getStatus());
+        if (!Objects.equals(oldStatus, old.getStatus())) {
             changes.add("状态: " + oldStatus + " → " + old.getStatus());
         }
-        if (!oldDeptId.equals(old.getDeptId())) {
+        if (!Objects.equals(oldDeptId, old.getDeptId())) {
             changes.add("部门: " + desc(oldDeptId) + " → " + desc(old.getDeptId()));
         }
-        if (!oldUserId.equals(old.getUserId())) {
+        if (!Objects.equals(oldUserId, old.getUserId())) {
             changes.add("领用人: " + desc(oldUserId) + " → " + desc(old.getUserId()));
         }
-        if (!oldRegionId.equals(old.getRegionId())) {
+        if (!Objects.equals(oldRegionId, old.getRegionId())) {
             changes.add("分区: " + desc(oldRegionId) + " → " + desc(old.getRegionId()));
         }
 

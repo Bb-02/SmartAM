@@ -74,6 +74,7 @@ public class DepartmentService {
         dept.setCode(req.getCode());
         dept.setStatus(1);
         departmentMapper.insert(dept);
+        dept = departmentMapper.selectById(dept.getId());
         return toResponse(dept);
     }
 

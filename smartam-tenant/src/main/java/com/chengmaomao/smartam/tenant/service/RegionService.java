@@ -67,6 +67,7 @@ public class RegionService {
         region.setIsDefault(0);
         region.setStatus(1);
         regionMapper.insert(region);
+        region = regionMapper.selectById(region.getId());
         return toResponse(region);
     }
 
