@@ -11,4 +11,6 @@ public class LoginResponse {
     private String username;
     private String role;
     private String realName;
+    private String companyName;
+    private String regionName;
 }

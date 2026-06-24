@@ -5,8 +5,10 @@ import com.chengmaomao.smartam.common.exception.BusinessException;
 import com.chengmaomao.smartam.common.util.JwtUtil;
 import com.chengmaomao.smartam.tenant.dto.LoginRequest;
 import com.chengmaomao.smartam.tenant.dto.LoginResponse;
+import com.chengmaomao.smartam.tenant.entity.Region;
 import com.chengmaomao.smartam.tenant.entity.Tenant;
 import com.chengmaomao.smartam.tenant.entity.User;
+import com.chengmaomao.smartam.tenant.mapper.RegionMapper;
 import com.chengmaomao.smartam.tenant.mapper.TenantMapper;
 import com.chengmaomao.smartam.tenant.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +20,7 @@ import org.springframework.stereotype.Service;
 public class AuthService {
 
     private final TenantMapper tenantMapper;
+    private final RegionMapper regionMapper;
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
 
@@ -52,6 +55,11 @@ public class AuthService {
                 user.getId(), tenant.getId(), user.getRegionId(), user.getDeptId(),
                 user.getUsername(), user.getRole());
 
-        return new LoginResponse(token, user.getId(), user.getUsername(), user.getRole(), user.getRealName());
+        // 6. 查分区名称
+        Region region = regionMapper.selectById(user.getRegionId());
+        String regionName = region != null ? region.getName() : "";
+
+        return new LoginResponse(token, user.getId(), user.getUsername(), user.getRole(), user.getRealName(),
+                tenant.getName(), regionName);
     }
 }
