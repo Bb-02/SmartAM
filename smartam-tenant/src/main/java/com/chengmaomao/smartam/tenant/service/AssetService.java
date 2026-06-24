@@ -139,6 +139,13 @@ public class AssetService {
             throw new BusinessException("无权限编辑资产");
         }
 
+        if (req.getRegionId() != null) {
+            if (RoleEnum.ADMIN_TENANT.equals(user.getRole())) {
+                asset.setRegionId(req.getRegionId());
+            } else {
+                throw new BusinessException("仅租户管理员可变更资产归属分区");
+            }
+        }
         if (req.getDeptId() != null) asset.setDeptId(req.getDeptId());
         if (req.getUserId() != null) asset.setUserId(req.getUserId());
         if (req.getName() != null) asset.setName(req.getName());

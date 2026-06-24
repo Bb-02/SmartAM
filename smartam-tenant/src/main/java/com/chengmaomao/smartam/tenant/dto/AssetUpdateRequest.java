@@ -7,6 +7,7 @@ import java.time.LocalDate;
 
 @Data
 public class AssetUpdateRequest {
+    private Long regionId;
     private Long deptId;
     private Long userId;
     private String name;
