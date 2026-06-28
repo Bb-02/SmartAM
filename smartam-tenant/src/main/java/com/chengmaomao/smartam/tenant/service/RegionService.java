@@ -121,6 +121,9 @@ public class RegionService {
 
     @Transactional
     public void updateStatus(Long id, Integer status) {
+        if (status == null || (status != 0 && status != 1)) {
+            throw new BusinessException("无效的分区状态");
+        }
         checkTenantAdmin();
         Region region = getOwnedRegion(id);
         if (region.getIsDefault() == 1) {

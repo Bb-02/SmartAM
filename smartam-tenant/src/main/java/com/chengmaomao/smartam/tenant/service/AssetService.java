@@ -242,8 +242,10 @@ public class AssetService {
             validateAssignment(old.getRegionId(), old.getDeptId(), old.getUserId(), old.getTenantId());
         }
 
-        // 分配领用人时，自动从 IN_STORAGE 切为 IN_USE
-        if (oldUserId == null && old.getUserId() != null && AssetStatus.IN_STORAGE.equals(oldStatus)) {
+        // 未显式设置状态时，分配领用人自动从 IN_STORAGE 切为 IN_USE
+        if (req.getStatus() == null
+                && oldUserId == null && old.getUserId() != null
+                && AssetStatus.IN_STORAGE.equals(oldStatus)) {
             old.setStatus(AssetStatus.IN_USE);
         }
 

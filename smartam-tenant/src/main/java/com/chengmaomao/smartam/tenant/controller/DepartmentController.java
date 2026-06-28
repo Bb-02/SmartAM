@@ -60,8 +60,9 @@ public class DepartmentController {
     }
 
     @DeleteMapping("/{id}")
-    public ApiResponse<Void> delete(@PathVariable Long id) {
-        departmentService.delete(id);
+    public ApiResponse<Void> delete(@PathVariable Long id,
+                                    @RequestParam(defaultValue = "false") boolean confirm) {
+        departmentService.delete(id, confirm);
         return ApiResponse.ok();
     }
 }

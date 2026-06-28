@@ -46,7 +46,7 @@ public class AuthService {
         }
 
         // 4. 检查状态
-        if (user.getStatus() == 0) {
+        if (user.getStatus() == null || user.getStatus() != 1) {
             throw new BusinessException("账号已被禁用");
         }
 

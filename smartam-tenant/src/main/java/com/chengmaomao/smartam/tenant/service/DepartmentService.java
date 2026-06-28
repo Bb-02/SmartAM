@@ -10,10 +10,12 @@ import com.chengmaomao.smartam.tenant.dto.DepartmentResponse;
 import com.chengmaomao.smartam.tenant.dto.DepartmentTreeNode;
 import com.chengmaomao.smartam.tenant.dto.DepartmentUpdateRequest;
 import com.chengmaomao.smartam.tenant.entity.Asset;
+import com.chengmaomao.smartam.tenant.entity.AssetLog;
 import com.chengmaomao.smartam.tenant.entity.Department;
 import com.chengmaomao.smartam.tenant.entity.Region;
 import com.chengmaomao.smartam.tenant.entity.RoleEnum;
 import com.chengmaomao.smartam.tenant.entity.User;
+import com.chengmaomao.smartam.tenant.mapper.AssetLogMapper;
 import com.chengmaomao.smartam.tenant.mapper.AssetMapper;
 import com.chengmaomao.smartam.tenant.mapper.DepartmentMapper;
 import com.chengmaomao.smartam.tenant.mapper.RegionMapper;
@@ -35,6 +37,7 @@ public class DepartmentService {
     private final DepartmentMapper departmentMapper;
     private final UserMapper userMapper;
     private final AssetMapper assetMapper;
+    private final AssetLogMapper assetLogMapper;
     private final RegionMapper regionMapper;
 
     private JwtUser currentUser() {
@@ -212,7 +215,7 @@ public class DepartmentService {
     }
 
     @Transactional
-    public void delete(Long id) {
+    public void delete(Long id, boolean confirm) {
         Department dept = getOwnedDept(id);
         JwtUser me = currentUser();
         if (!RoleEnum.ADMIN_TENANT.equals(me.getRole())) {
@@ -225,17 +228,38 @@ public class DepartmentService {
             throw new BusinessException("该部门下存在用户，请先迁移用户后再删除");
         }
 
-        // 检查是否有子部门
         Long childCount = departmentMapper.selectCount(new LambdaQueryWrapper<Department>()
                 .eq(Department::getParentId, id));
         if (childCount > 0) {
             throw new BusinessException("该部门下存在子部门，请先删除子部门");
         }
 
-        Long assetCount = assetMapper.selectCount(new LambdaQueryWrapper<Asset>()
+        // 部门下资产迁移到默认分区
+        List<Asset> assets = assetMapper.selectList(new LambdaQueryWrapper<Asset>()
                 .eq(Asset::getDeptId, id));
-        if (assetCount > 0) {
-            throw new BusinessException("该部门下存在资产，请先迁移资产后再删除");
+        if (!assets.isEmpty() && !confirm) {
+            throw new BusinessException("该部门下有 " + assets.size()
+                    + " 件资产，将迁移至总分区。请确认后重试 (confirm=true)");
+        }
+        if (!assets.isEmpty()) {
+            Region defaultRegion = regionMapper.selectOne(new LambdaQueryWrapper<Region>()
+                    .eq(Region::getTenantId, me.getTenantId())
+                    .eq(Region::getIsDefault, 1));
+            if (defaultRegion == null) {
+                throw new BusinessException("默认分区不存在");
+            }
+            for (Asset asset : assets) {
+                asset.setDeptId(null);
+                asset.setRegionId(defaultRegion.getId());
+                assetMapper.updateById(asset);
+                AssetLog log = new AssetLog();
+                log.setTenantId(asset.getTenantId());
+                log.setAssetId(asset.getId());
+                log.setOperatorId(me.getUserId());
+                log.setAction("TRANSFER");
+                log.setDescription("部门 " + dept.getName() + " 删除，资产迁移至 " + defaultRegion.getName());
+                assetLogMapper.insert(log);
+            }
         }
 
         departmentMapper.deleteById(id);

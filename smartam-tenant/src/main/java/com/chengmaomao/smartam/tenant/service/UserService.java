@@ -261,7 +261,12 @@ public class UserService {
             }
         }
 
-        if (req.getStatus() != null) target.setStatus(req.getStatus());
+        if (req.getStatus() != null) {
+            if (req.getStatus() != 0 && req.getStatus() != 1) {
+                throw new BusinessException("无效的用户状态");
+            }
+            target.setStatus(req.getStatus());
+        }
         if (StringUtils.hasText(req.getPassword())) {
             target.setPassword(passwordEncoder.encode(req.getPassword()));
         }
