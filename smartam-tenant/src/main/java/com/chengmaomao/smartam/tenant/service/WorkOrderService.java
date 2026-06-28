@@ -9,11 +9,13 @@ import com.chengmaomao.smartam.tenant.dto.WorkOrderConfirmRequest;
 import com.chengmaomao.smartam.tenant.dto.WorkOrderCreateRequest;
 import com.chengmaomao.smartam.tenant.dto.WorkOrderResolveRequest;
 import com.chengmaomao.smartam.tenant.dto.WorkOrderResponse;
+import com.chengmaomao.smartam.tenant.entity.Asset;
 import com.chengmaomao.smartam.tenant.entity.RoleEnum;
 import com.chengmaomao.smartam.tenant.entity.User;
 import com.chengmaomao.smartam.tenant.entity.WorkOrder;
 import com.chengmaomao.smartam.tenant.entity.WorkOrderLog;
 import com.chengmaomao.smartam.tenant.entity.WorkOrderStatus;
+import com.chengmaomao.smartam.tenant.mapper.AssetMapper;
 import com.chengmaomao.smartam.tenant.mapper.UserMapper;
 import com.chengmaomao.smartam.tenant.mapper.WorkOrderLogMapper;
 import com.chengmaomao.smartam.tenant.mapper.WorkOrderMapper;
@@ -33,6 +35,7 @@ public class WorkOrderService {
     private final WorkOrderMapper workOrderMapper;
     private final WorkOrderLogMapper workOrderLogMapper;
     private final UserMapper userMapper;
+    private final AssetMapper assetMapper;
 
     private JwtUser currentUser() {
         return (JwtUser) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -83,6 +86,20 @@ public class WorkOrderService {
         JwtUser me = currentUser();
         if (!RoleEnum.EMPLOYEE.equals(me.getRole())) {
             throw new BusinessException("仅员工可提交工单");
+        }
+
+        if (req.getAssetId() != null) {
+            Asset asset = assetMapper.selectById(req.getAssetId());
+            if (asset == null || !asset.getTenantId().equals(me.getTenantId())) {
+                throw new BusinessException("资产不存在");
+            }
+            Long dup = workOrderMapper.selectCount(new LambdaQueryWrapper<WorkOrder>()
+                    .eq(WorkOrder::getAssetId, req.getAssetId())
+                    .eq(WorkOrder::getReporterId, me.getUserId())
+                    .notIn(WorkOrder::getStatus, WorkOrderStatus.CLOSED, WorkOrderStatus.CANCELLED));
+            if (dup > 0) {
+                throw new BusinessException("您已对该资产提交过工单，请等待处理或取消后再提交");
+            }
         }
 
         WorkOrder wo = new WorkOrder();

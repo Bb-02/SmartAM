@@ -11,13 +11,21 @@ import com.chengmaomao.smartam.tenant.dto.AssetUpdateRequest;
 import com.chengmaomao.smartam.tenant.entity.Asset;
 import com.chengmaomao.smartam.tenant.entity.AssetLog;
 import com.chengmaomao.smartam.tenant.entity.AssetStatus;
+import com.chengmaomao.smartam.tenant.entity.Department;
 import com.chengmaomao.smartam.tenant.entity.Region;
 import com.chengmaomao.smartam.tenant.entity.RoleEnum;
+import com.chengmaomao.smartam.tenant.entity.User;
 import com.chengmaomao.smartam.tenant.entity.WorkOrder;
+import com.chengmaomao.smartam.tenant.entity.WorkOrderLog;
 import com.chengmaomao.smartam.tenant.entity.WorkOrderStatus;
+import com.chengmaomao.smartam.tenant.mapper.DepartmentMapper;
+import com.chengmaomao.smartam.tenant.mapper.UserMapper;
 import com.chengmaomao.smartam.tenant.mapper.AssetLogMapper;
 import com.chengmaomao.smartam.tenant.mapper.AssetMapper;
+import com.chengmaomao.smartam.tenant.mapper.DepartmentMapper;
 import com.chengmaomao.smartam.tenant.mapper.RegionMapper;
+import com.chengmaomao.smartam.tenant.mapper.UserMapper;
+import com.chengmaomao.smartam.tenant.mapper.WorkOrderLogMapper;
 import com.chengmaomao.smartam.tenant.mapper.WorkOrderMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -36,7 +44,10 @@ public class AssetService {
     private final AssetMapper assetMapper;
     private final AssetLogMapper assetLogMapper;
     private final WorkOrderMapper workOrderMapper;
+    private final WorkOrderLogMapper workOrderLogMapper;
     private final RegionMapper regionMapper;
+    private final DepartmentMapper departmentMapper;
+    private final UserMapper userMapper;
 
     private JwtUser currentUser() {
         return (JwtUser) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -107,6 +118,7 @@ public class AssetService {
         }
         asset.setDeptId(req.getDeptId());
         asset.setUserId(req.getUserId());
+        validateAssignment(asset.getRegionId(), asset.getDeptId(), asset.getUserId(), user.getTenantId());
         asset.setName(req.getName());
         asset.setCode(req.getCode());
         asset.setCategory(req.getCategory());
@@ -222,6 +234,11 @@ public class AssetService {
         if (req.getWarrantyEnd() != null) old.setWarrantyEnd(req.getWarrantyEnd());
         if (req.getDescription() != null) old.setDescription(req.getDescription());
 
+        // 校验部门、用户、分区一致性
+        if (req.getDeptId() != null || req.getUserId() != null || req.getRegionId() != null) {
+            validateAssignment(old.getRegionId(), old.getDeptId(), old.getUserId(), old.getTenantId());
+        }
+
         // 分配领用人时，自动从 IN_STORAGE 切为 IN_USE
         if (oldUserId == null && old.getUserId() != null && AssetStatus.IN_STORAGE.equals(oldStatus)) {
             old.setStatus(AssetStatus.IN_USE);
@@ -244,6 +261,25 @@ public class AssetService {
 
         assetMapper.updateById(old);
 
+        // 资产报废时，取消所有关联的活跃工单
+        if (AssetStatus.SCRAPPED.equals(old.getStatus()) && !AssetStatus.SCRAPPED.equals(oldStatus)) {
+            List<WorkOrder> activeOrders = workOrderMapper.selectList(new LambdaQueryWrapper<WorkOrder>()
+                    .eq(WorkOrder::getAssetId, id)
+                    .notIn(WorkOrder::getStatus, WorkOrderStatus.CLOSED, WorkOrderStatus.CANCELLED));
+            for (WorkOrder wo : activeOrders) {
+                String prevStatus = wo.getStatus();
+                wo.setStatus(WorkOrderStatus.CANCELLED);
+                workOrderMapper.updateById(wo);
+                WorkOrderLog woLog = new WorkOrderLog();
+                woLog.setWorkOrderId(wo.getId());
+                woLog.setFromStatus(prevStatus);
+                woLog.setToStatus(WorkOrderStatus.CANCELLED);
+                woLog.setOperatorId(user.getUserId());
+                woLog.setRemark("资产已报废，工单自动取消");
+                workOrderLogMapper.insert(woLog);
+            }
+        }
+
         if (!changes.isEmpty()) {
             String action = inferAction(oldStatus, old.getStatus());
             writeLog(old, user.getUserId(), action, String.join("; ", changes), null);
@@ -263,6 +299,27 @@ public class AssetService {
 
     private static String desc(Object val) {
         return val == null ? "空" : val.toString();
+    }
+
+    private void validateAssignment(Long regionId, Long deptId, Long userId, Long tenantId) {
+        if (deptId != null) {
+            Department dept = departmentMapper.selectById(deptId);
+            if (dept == null || !dept.getTenantId().equals(tenantId)) {
+                throw new BusinessException("部门不存在");
+            }
+            if (!dept.getRegionId().equals(regionId)) {
+                throw new BusinessException("部门不属于该分区");
+            }
+        }
+        if (userId != null) {
+            User u = userMapper.selectById(userId);
+            if (u == null || !u.getTenantId().equals(tenantId)) {
+                throw new BusinessException("用户不存在");
+            }
+            if (deptId != null && !deptId.equals(u.getDeptId())) {
+                throw new BusinessException("用户不属于该部门");
+            }
+        }
     }
 
     private void writeLog(Asset asset, Long operatorId, String action, String description, String remark) {

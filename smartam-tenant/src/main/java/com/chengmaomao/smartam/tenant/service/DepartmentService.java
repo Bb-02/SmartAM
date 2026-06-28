@@ -76,6 +76,25 @@ public class DepartmentService {
             throw new BusinessException("分区不存在");
         }
 
+        // 父部门校验
+        if (req.getParentId() != null) {
+            Department parent = departmentMapper.selectById(req.getParentId());
+            if (parent == null || !parent.getTenantId().equals(me.getTenantId())) {
+                throw new BusinessException("父部门不存在");
+            }
+            if (!parent.getRegionId().equals(regionId)) {
+                throw new BusinessException("父部门不属于该分区");
+            }
+        }
+
+        // 编码唯一性
+        Long codeCount = departmentMapper.selectCount(new LambdaQueryWrapper<Department>()
+                .eq(Department::getTenantId, me.getTenantId())
+                .eq(Department::getCode, req.getCode()));
+        if (codeCount > 0) {
+            throw new BusinessException("该部门编码已存在");
+        }
+
         Department dept = new Department();
         dept.setTenantId(me.getTenantId());
         dept.setRegionId(regionId);
@@ -121,8 +140,29 @@ public class DepartmentService {
         Department dept = getOwnedDept(id);
 
         if (req.getName() != null) dept.setName(req.getName());
-        if (req.getCode() != null) dept.setCode(req.getCode());
-        if (req.getParentId() != null) dept.setParentId(req.getParentId());
+        if (req.getCode() != null) {
+            Long codeCount = departmentMapper.selectCount(new LambdaQueryWrapper<Department>()
+                    .eq(Department::getTenantId, dept.getTenantId())
+                    .eq(Department::getCode, req.getCode())
+                    .ne(Department::getId, id));
+            if (codeCount > 0) {
+                throw new BusinessException("该部门编码已存在");
+            }
+            dept.setCode(req.getCode());
+        }
+        if (req.getParentId() != null) {
+            if (req.getParentId().equals(id)) {
+                throw new BusinessException("不能将自己设为父部门");
+            }
+            Department parent = departmentMapper.selectById(req.getParentId());
+            if (parent == null || !parent.getTenantId().equals(dept.getTenantId())) {
+                throw new BusinessException("父部门不存在");
+            }
+            if (!parent.getRegionId().equals(dept.getRegionId())) {
+                throw new BusinessException("父部门不属于该分区");
+            }
+            dept.setParentId(req.getParentId());
+        }
 
         departmentMapper.updateById(dept);
         return toResponse(dept);

@@ -8,11 +8,18 @@ import com.chengmaomao.smartam.common.security.JwtUser;
 import com.chengmaomao.smartam.tenant.dto.UserCreateRequest;
 import com.chengmaomao.smartam.tenant.dto.UserResponse;
 import com.chengmaomao.smartam.tenant.dto.UserUpdateRequest;
+import com.chengmaomao.smartam.tenant.entity.Asset;
+import com.chengmaomao.smartam.tenant.entity.Department;
 import com.chengmaomao.smartam.tenant.entity.Region;
 import com.chengmaomao.smartam.tenant.entity.RoleEnum;
 import com.chengmaomao.smartam.tenant.entity.User;
+import com.chengmaomao.smartam.tenant.entity.WorkOrder;
+import com.chengmaomao.smartam.tenant.entity.WorkOrderStatus;
+import com.chengmaomao.smartam.tenant.mapper.AssetMapper;
+import com.chengmaomao.smartam.tenant.mapper.DepartmentMapper;
 import com.chengmaomao.smartam.tenant.mapper.RegionMapper;
 import com.chengmaomao.smartam.tenant.mapper.UserMapper;
+import com.chengmaomao.smartam.tenant.mapper.WorkOrderMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -27,6 +34,9 @@ public class UserService {
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
     private final RegionMapper regionMapper;
+    private final AssetMapper assetMapper;
+    private final WorkOrderMapper workOrderMapper;
+    private final DepartmentMapper departmentMapper;
 
     private JwtUser currentUser() {
         return (JwtUser) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -103,6 +113,15 @@ public class UserService {
         }
         user.setRegionId(regionId);
         user.setDeptId(req.getDeptId());
+        if (req.getDeptId() != null) {
+            Department dept = departmentMapper.selectById(req.getDeptId());
+            if (dept == null || !dept.getTenantId().equals(me.getTenantId())) {
+                throw new BusinessException("部门不存在");
+            }
+            if (!dept.getRegionId().equals(regionId)) {
+                throw new BusinessException("部门不属于该分区");
+            }
+        }
         user.setUsername(req.getUsername());
         user.setPassword(passwordEncoder.encode(req.getPassword()));
         user.setRealName(req.getRealName());
@@ -167,7 +186,26 @@ public class UserService {
             }
             target.setRegionId(req.getRegionId());
         }
-        if (req.getDeptId() != null) target.setDeptId(req.getDeptId());
+        if (req.getDeptId() != null) {
+            Department dept = departmentMapper.selectById(req.getDeptId());
+            if (dept == null || !dept.getTenantId().equals(target.getTenantId())) {
+                throw new BusinessException("部门不存在");
+            }
+            if (!dept.getRegionId().equals(target.getRegionId())) {
+                throw new BusinessException("部门不属于该分区");
+            }
+            target.setDeptId(req.getDeptId());
+        }
+        // 分区变更后，重校现有部门是否属于新分区
+        if (req.getRegionId() != null && target.getDeptId() != null) {
+            Department dept = departmentMapper.selectById(target.getDeptId());
+            if (dept == null || !dept.getTenantId().equals(target.getTenantId())) {
+                throw new BusinessException("部门不存在");
+            }
+            if (!dept.getRegionId().equals(target.getRegionId())) {
+                throw new BusinessException("该用户的部门不属于新分区，请先调整部门");
+            }
+        }
         if (req.getStatus() != null) target.setStatus(req.getStatus());
         if (StringUtils.hasText(req.getPassword())) {
             target.setPassword(passwordEncoder.encode(req.getPassword()));
@@ -188,6 +226,20 @@ public class UserService {
                 || RoleEnum.ADMIN_REGION.equals(target.getRole())) {
             throw new BusinessException("不能删除管理员账号");
         }
+
+        Long assetCount = assetMapper.selectCount(new LambdaQueryWrapper<Asset>()
+                .eq(Asset::getUserId, id));
+        if (assetCount > 0) {
+            throw new BusinessException("该用户名下还有资产，请先转移资产后再删除");
+        }
+
+        Long woCount = workOrderMapper.selectCount(new LambdaQueryWrapper<WorkOrder>()
+                .and(w -> w.eq(WorkOrder::getReporterId, id).or().eq(WorkOrder::getEngineerId, id))
+                .notIn(WorkOrder::getStatus, WorkOrderStatus.CLOSED, WorkOrderStatus.CANCELLED));
+        if (woCount > 0) {
+            throw new BusinessException("该用户还有活跃工单，请先处理工单后再删除");
+        }
+
         userMapper.deleteById(target.getId());
     }
 
