@@ -8,6 +8,7 @@ import java.time.LocalDateTime;
 public class AssetApplicationResponse {
     private Long id;
     private Long tenantId;
+    private Long regionId;
     private Long assetId;
     private String assetName;
     private Long applicantId;

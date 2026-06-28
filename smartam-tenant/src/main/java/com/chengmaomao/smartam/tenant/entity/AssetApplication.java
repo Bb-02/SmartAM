@@ -10,6 +10,7 @@ import lombok.EqualsAndHashCode;
 @TableName("asset_application")
 public class AssetApplication extends BaseEntity {
     private Long tenantId;
+    private Long regionId;
     private Long assetId;
     private Long applicantId;
     private String reason;

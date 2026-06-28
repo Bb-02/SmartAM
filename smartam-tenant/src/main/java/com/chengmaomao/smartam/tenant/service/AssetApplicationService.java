@@ -14,7 +14,9 @@ import com.chengmaomao.smartam.tenant.entity.AssetStatus;
 import com.chengmaomao.smartam.tenant.entity.RoleEnum;
 import com.chengmaomao.smartam.tenant.entity.User;
 import com.chengmaomao.smartam.tenant.entity.AssetApplicationLog;
+import com.chengmaomao.smartam.tenant.entity.AssetLog;
 import com.chengmaomao.smartam.tenant.mapper.AssetApplicationLogMapper;
+import com.chengmaomao.smartam.tenant.mapper.AssetLogMapper;
 import com.chengmaomao.smartam.tenant.mapper.AssetApplicationMapper;
 import com.chengmaomao.smartam.tenant.mapper.AssetMapper;
 import com.chengmaomao.smartam.tenant.mapper.UserMapper;
@@ -34,6 +36,7 @@ public class AssetApplicationService {
     private final AssetMapper assetMapper;
     private final UserMapper userMapper;
     private final AssetApplicationLogMapper applicationLogMapper;
+    private final AssetLogMapper assetLogMapper;
 
     private JwtUser currentUser() {
         return (JwtUser) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -54,8 +57,18 @@ public class AssetApplicationService {
             throw new BusinessException("该资产不可申领，仅库存在库资产可申领");
         }
 
+        // 防止重复申领
+        Long dup = applicationMapper.selectCount(new LambdaQueryWrapper<AssetApplication>()
+                .eq(AssetApplication::getAssetId, req.getAssetId())
+                .eq(AssetApplication::getApplicantId, me.getUserId())
+                .eq(AssetApplication::getStatus, AssetApplicationStatus.PENDING));
+        if (dup > 0) {
+            throw new BusinessException("您已对该资产提交过申领，请等待审批");
+        }
+
         AssetApplication app = new AssetApplication();
         app.setTenantId(me.getTenantId());
+        app.setRegionId(asset.getRegionId());
         app.setAssetId(req.getAssetId());
         app.setApplicantId(me.getUserId());
         app.setReason(req.getReason());
@@ -77,6 +90,9 @@ public class AssetApplicationService {
 
         if (RoleEnum.EMPLOYEE.equals(me.getRole())) {
             qw.eq(AssetApplication::getApplicantId, me.getUserId());
+        }
+        if (RoleEnum.ADMIN_REGION.equals(me.getRole())) {
+            qw.eq(AssetApplication::getRegionId, me.getRegionId());
         }
         if (status != null && !status.isBlank()) {
             qw.eq(AssetApplication::getStatus, status);
@@ -103,6 +119,9 @@ public class AssetApplicationService {
         if (asset == null || !asset.getTenantId().equals(me.getTenantId())) {
             throw new BusinessException("资产不存在");
         }
+        if (!AssetStatus.IN_STORAGE.equals(asset.getStatus())) {
+            throw new BusinessException("该资产已被分配，无法重复审批");
+        }
 
         // 自动分配：asset 归属申请人
         User applicant = userMapper.selectById(app.getApplicantId());
@@ -112,6 +131,9 @@ public class AssetApplicationService {
         }
         asset.setStatus(AssetStatus.IN_USE);
         assetMapper.updateById(asset);
+
+        writeAssetLog(asset, me.getUserId(), "ASSIGN",
+                "申领审批通过，分配给 " + (applicant != null ? applicant.getRealName() : "用户" + app.getApplicantId()));
 
         app.setStatus(AssetApplicationStatus.APPROVED);
         app.setApproverId(me.getUserId());
@@ -167,6 +189,10 @@ public class AssetApplicationService {
         if (app == null || !app.getTenantId().equals(me.getTenantId())) {
             throw new BusinessException("申领记录不存在");
         }
+        if (RoleEnum.ADMIN_REGION.equals(me.getRole())
+                && !app.getRegionId().equals(me.getRegionId())) {
+            throw new BusinessException("无权查看该申领");
+        }
         if (RoleEnum.EMPLOYEE.equals(me.getRole())
                 && !app.getApplicantId().equals(me.getUserId())) {
             throw new BusinessException("无权查看该申领");
@@ -189,6 +215,7 @@ public class AssetApplicationService {
         AssetApplicationResponse r = new AssetApplicationResponse();
         r.setId(a.getId());
         r.setTenantId(a.getTenantId());
+        r.setRegionId(a.getRegionId());
         r.setAssetId(a.getAssetId());
         r.setAssetName(getAssetName(a.getAssetId()));
         r.setApplicantId(a.getApplicantId());
@@ -219,5 +246,15 @@ public class AssetApplicationService {
         log.setOperatorId(operatorId);
         log.setRemark(remark);
         applicationLogMapper.insert(log);
+    }
+
+    private void writeAssetLog(Asset asset, Long operatorId, String action, String description) {
+        AssetLog log = new AssetLog();
+        log.setTenantId(asset.getTenantId());
+        log.setAssetId(asset.getId());
+        log.setOperatorId(operatorId);
+        log.setAction(action);
+        log.setDescription(description);
+        assetLogMapper.insert(log);
     }
 }
