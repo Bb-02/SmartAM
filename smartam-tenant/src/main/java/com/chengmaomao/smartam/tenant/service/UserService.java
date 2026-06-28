@@ -9,12 +9,15 @@ import com.chengmaomao.smartam.tenant.dto.UserCreateRequest;
 import com.chengmaomao.smartam.tenant.dto.UserResponse;
 import com.chengmaomao.smartam.tenant.dto.UserUpdateRequest;
 import com.chengmaomao.smartam.tenant.entity.Asset;
+import com.chengmaomao.smartam.tenant.entity.AssetLog;
+import com.chengmaomao.smartam.tenant.entity.AssetStatus;
 import com.chengmaomao.smartam.tenant.entity.Department;
 import com.chengmaomao.smartam.tenant.entity.Region;
 import com.chengmaomao.smartam.tenant.entity.RoleEnum;
 import com.chengmaomao.smartam.tenant.entity.User;
 import com.chengmaomao.smartam.tenant.entity.WorkOrder;
 import com.chengmaomao.smartam.tenant.entity.WorkOrderStatus;
+import com.chengmaomao.smartam.tenant.mapper.AssetLogMapper;
 import com.chengmaomao.smartam.tenant.mapper.AssetMapper;
 import com.chengmaomao.smartam.tenant.mapper.DepartmentMapper;
 import com.chengmaomao.smartam.tenant.mapper.RegionMapper;
@@ -27,6 +30,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.util.List;
+import org.springframework.util.StringUtils;
+
 @Service
 @RequiredArgsConstructor
 public class UserService {
@@ -35,6 +41,7 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final RegionMapper regionMapper;
     private final AssetMapper assetMapper;
+    private final AssetLogMapper assetLogMapper;
     private final WorkOrderMapper workOrderMapper;
     private final DepartmentMapper departmentMapper;
 
@@ -206,6 +213,26 @@ public class UserService {
                 throw new BusinessException("该用户的部门不属于新分区，请先调整部门");
             }
         }
+        // 换部门时，名下资产归还原部门
+        if (req.getDeptId() != null) {
+            List<Asset> userAssets = assetMapper.selectList(new LambdaQueryWrapper<Asset>()
+                    .eq(Asset::getUserId, id));
+            for (Asset asset : userAssets) {
+                asset.setUserId(null);
+                if (AssetStatus.IN_USE.equals(asset.getStatus())) {
+                    asset.setStatus(AssetStatus.IN_STORAGE);
+                }
+                assetMapper.updateById(asset);
+                AssetLog log = new AssetLog();
+                log.setTenantId(asset.getTenantId());
+                log.setAssetId(asset.getId());
+                log.setOperatorId(currentUser().getUserId());
+                log.setAction("RETURN");
+                log.setDescription("用户 " + target.getRealName() + " 变更部门，资产归还");
+                assetLogMapper.insert(log);
+            }
+        }
+
         if (req.getStatus() != null) target.setStatus(req.getStatus());
         if (StringUtils.hasText(req.getPassword())) {
             target.setPassword(passwordEncoder.encode(req.getPassword()));
