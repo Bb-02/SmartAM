@@ -7,6 +7,7 @@ import com.chengmaomao.smartam.common.exception.BusinessException;
 import com.chengmaomao.smartam.common.security.JwtUser;
 import com.chengmaomao.smartam.tenant.dto.DepartmentCreateRequest;
 import com.chengmaomao.smartam.tenant.dto.DepartmentResponse;
+import com.chengmaomao.smartam.tenant.dto.DepartmentTreeNode;
 import com.chengmaomao.smartam.tenant.dto.DepartmentUpdateRequest;
 import com.chengmaomao.smartam.tenant.entity.Asset;
 import com.chengmaomao.smartam.tenant.entity.Department;
@@ -21,6 +22,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -109,6 +115,43 @@ public class DepartmentService {
 
     public DepartmentResponse getById(Long id) {
         return toResponse(getOwnedDept(id));
+    }
+
+    public List<DepartmentTreeNode> tree() {
+        checkAdmin();
+        JwtUser me = currentUser();
+        LambdaQueryWrapper<Department> qw = new LambdaQueryWrapper<>();
+        qw.eq(Department::getTenantId, me.getTenantId());
+        if (RoleEnum.ADMIN_REGION.equals(me.getRole())) {
+            qw.eq(Department::getRegionId, me.getRegionId());
+        }
+        qw.orderByAsc(Department::getParentId).orderByAsc(Department::getId);
+        List<Department> all = departmentMapper.selectList(qw);
+
+        Map<Long, List<DepartmentTreeNode>> byParent = new HashMap<>();
+        for (Department d : all) {
+            DepartmentTreeNode node = new DepartmentTreeNode();
+            node.setId(d.getId());
+            node.setName(d.getName());
+            node.setCode(d.getCode());
+            node.setParentId(d.getParentId());
+            node.setRegionId(d.getRegionId());
+            byParent.computeIfAbsent(d.getParentId() != null ? d.getParentId() : 0L, k -> new ArrayList<>()).add(node);
+        }
+
+        List<DepartmentTreeNode> roots = byParent.getOrDefault(0L, new ArrayList<>());
+        buildTree(roots, byParent);
+        return roots;
+    }
+
+    private void buildTree(List<DepartmentTreeNode> nodes, Map<Long, List<DepartmentTreeNode>> byParent) {
+        for (DepartmentTreeNode node : nodes) {
+            List<DepartmentTreeNode> children = byParent.get(node.getId());
+            if (children != null) {
+                node.setChildren(children);
+                buildTree(children, byParent);
+            }
+        }
     }
 
     public IPage<DepartmentResponse> page(int page, int size, Long regionId, Long parentId, String keyword) {

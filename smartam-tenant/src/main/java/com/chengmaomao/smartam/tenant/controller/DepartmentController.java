@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.chengmaomao.smartam.common.result.ApiResponse;
 import com.chengmaomao.smartam.tenant.dto.DepartmentCreateRequest;
 import com.chengmaomao.smartam.tenant.dto.DepartmentResponse;
+import com.chengmaomao.smartam.tenant.dto.DepartmentTreeNode;
 import com.chengmaomao.smartam.tenant.dto.DepartmentUpdateRequest;
 import com.chengmaomao.smartam.tenant.service.DepartmentService;
 import jakarta.validation.Valid;
@@ -18,6 +19,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/departments")
 @RequiredArgsConstructor
@@ -28,6 +31,11 @@ public class DepartmentController {
     @PostMapping
     public ApiResponse<DepartmentResponse> create(@Valid @RequestBody DepartmentCreateRequest req) {
         return ApiResponse.ok(departmentService.create(req));
+    }
+
+    @GetMapping("/tree")
+    public ApiResponse<List<DepartmentTreeNode>> tree() {
+        return ApiResponse.ok(departmentService.tree());
     }
 
     @GetMapping("/{id}")

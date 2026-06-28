@@ -60,6 +60,6 @@ public class AuthService {
         String regionName = region != null ? region.getName() : "";
 
         return new LoginResponse(token, user.getId(), user.getUsername(), user.getRole(), user.getRealName(),
-                tenant.getName(), regionName);
+                tenant.getName(), user.getRegionId(), regionName, user.getDeptId());
     }
 }

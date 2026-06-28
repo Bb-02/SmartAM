@@ -36,8 +36,10 @@ public class AssetApplicationController {
     public ApiResponse<IPage<AssetApplicationResponse>> page(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) String status) {
-        return ApiResponse.ok(applicationService.page(page, size, status));
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) Long assetId,
+            @RequestParam(required = false) Long applicantId) {
+        return ApiResponse.ok(applicationService.page(page, size, status, assetId, applicantId));
     }
 
     @PostMapping("/{id}/approve")

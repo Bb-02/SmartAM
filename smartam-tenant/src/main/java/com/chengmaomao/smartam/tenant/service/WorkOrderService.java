@@ -39,6 +39,9 @@ public class WorkOrderService {
     private final UserMapper userMapper;
     private final AssetMapper assetMapper;
 
+    private static final Set<String> VALID_PRIORITIES = Set.of("LOW", "NORMAL", "HIGH", "URGENT");
+    private static final Set<String> VALID_TYPES = Set.of("REPAIR");
+
     private JwtUser currentUser() {
         return (JwtUser) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
     }
@@ -90,6 +93,15 @@ public class WorkOrderService {
             throw new BusinessException("仅员工可提交工单");
         }
 
+        String type = req.getType() != null ? req.getType() : "REPAIR";
+        if (!VALID_TYPES.contains(type)) {
+            throw new BusinessException("无效的工单类型: " + type);
+        }
+        String priority = req.getPriority() != null ? req.getPriority() : "NORMAL";
+        if (!VALID_PRIORITIES.contains(priority)) {
+            throw new BusinessException("无效的优先级: " + priority);
+        }
+
         if (req.getAssetId() != null) {
             Asset asset = assetMapper.selectById(req.getAssetId());
             if (asset == null || !asset.getTenantId().equals(me.getTenantId())) {
@@ -107,12 +119,12 @@ public class WorkOrderService {
         WorkOrder wo = new WorkOrder();
         wo.setTenantId(me.getTenantId());
         wo.setRegionId(me.getRegionId());
-        wo.setType(req.getType() != null ? req.getType() : "REPAIR");
+        wo.setType(type);
         wo.setTitle(req.getTitle());
         wo.setDescription(req.getDescription());
         wo.setAssetId(req.getAssetId());
         wo.setReporterId(me.getUserId());
-        wo.setPriority(req.getPriority() != null ? req.getPriority() : "NORMAL");
+        wo.setPriority(priority);
         wo.setStatus(WorkOrderStatus.PENDING);
         workOrderMapper.insert(wo);
         wo = workOrderMapper.selectById(wo.getId());
@@ -139,14 +151,20 @@ public class WorkOrderService {
 
         if (req.getTitle() != null) wo.setTitle(req.getTitle());
         if (req.getDescription() != null) wo.setDescription(req.getDescription());
-        if (req.getPriority() != null) wo.setPriority(req.getPriority());
+        if (req.getPriority() != null) {
+            if (!VALID_PRIORITIES.contains(req.getPriority())) {
+                throw new BusinessException("无效的优先级: " + req.getPriority());
+            }
+            wo.setPriority(req.getPriority());
+        }
         workOrderMapper.updateById(wo);
 
         writeLog(wo.getId(), WorkOrderStatus.PENDING, WorkOrderStatus.PENDING, me.getUserId(), "编辑工单");
         return toResponse(wo);
     }
 
-    public IPage<WorkOrderResponse> page(int page, int size, String status, String priority, String keyword) {
+    public IPage<WorkOrderResponse> page(int page, int size, String status, String priority,
+                                         String keyword, Long assetId, Long engineerId) {
         JwtUser me = currentUser();
         LambdaQueryWrapper<WorkOrder> qw = new LambdaQueryWrapper<>();
         applyRoleFilter(qw, me);
@@ -159,6 +177,12 @@ public class WorkOrderService {
         }
         if (keyword != null && !keyword.isBlank()) {
             qw.and(w -> w.like(WorkOrder::getTitle, keyword));
+        }
+        if (assetId != null) {
+            qw.eq(WorkOrder::getAssetId, assetId);
+        }
+        if (engineerId != null) {
+            qw.eq(WorkOrder::getEngineerId, engineerId);
         }
         qw.orderByDesc(WorkOrder::getId);
 

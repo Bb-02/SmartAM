@@ -12,5 +12,7 @@ public class LoginResponse {
     private String role;
     private String realName;
     private String companyName;
+    private Long regionId;
     private String regionName;
+    private Long deptId;
 }

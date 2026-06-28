@@ -108,7 +108,8 @@ public class AssetApplicationService {
         return toResponse(getOwned(id));
     }
 
-    public IPage<AssetApplicationResponse> page(int page, int size, String status) {
+    public IPage<AssetApplicationResponse> page(int page, int size, String status,
+                                                Long assetId, Long applicantId) {
         JwtUser me = currentUser();
 
         LambdaQueryWrapper<AssetApplication> qw = new LambdaQueryWrapper<>();
@@ -116,12 +117,17 @@ public class AssetApplicationService {
 
         if (RoleEnum.EMPLOYEE.equals(me.getRole())) {
             qw.eq(AssetApplication::getApplicantId, me.getUserId());
+        } else if (applicantId != null) {
+            qw.eq(AssetApplication::getApplicantId, applicantId);
         }
         if (RoleEnum.ADMIN_REGION.equals(me.getRole())) {
             qw.eq(AssetApplication::getRegionId, me.getRegionId());
         }
         if (status != null && !status.isBlank()) {
             qw.eq(AssetApplication::getStatus, status);
+        }
+        if (assetId != null) {
+            qw.eq(AssetApplication::getAssetId, assetId);
         }
         qw.orderByDesc(AssetApplication::getId);
 
