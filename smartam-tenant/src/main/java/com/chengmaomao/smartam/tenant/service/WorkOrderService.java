@@ -38,6 +38,7 @@ public class WorkOrderService {
     private final WorkOrderLogMapper workOrderLogMapper;
     private final UserMapper userMapper;
     private final AssetMapper assetMapper;
+    private final MessageService messageService;
 
     private static final Set<String> VALID_PRIORITIES = Set.of("LOW", "NORMAL", "HIGH", "URGENT");
     private static final Set<String> VALID_TYPES = Set.of("REPAIR");
@@ -130,6 +131,20 @@ public class WorkOrderService {
         wo = workOrderMapper.selectById(wo.getId());
 
         writeLog(wo.getId(), null, WorkOrderStatus.PENDING, me.getUserId(), null);
+
+        // 通知同分区所有工程师
+        List<User> engineers = userMapper.selectList(new LambdaQueryWrapper<User>()
+                .eq(User::getTenantId, me.getTenantId())
+                .eq(User::getRegionId, me.getRegionId())
+                .eq(User::getRole, RoleEnum.ENGINEER));
+        String reporterName = getUserName(me.getUserId());
+        for (User engineer : engineers) {
+            messageService.send(me.getTenantId(), engineer.getId(), "WORK_ORDER",
+                    "新的报修工单",
+                    reporterName + " 提交了报修工单「" + wo.getTitle() + "」，等待接单",
+                    wo.getId());
+        }
+
         return toResponse(wo);
     }
 
@@ -227,6 +242,12 @@ public class WorkOrderService {
         workOrderMapper.updateById(wo);
 
         writeLog(wo.getId(), WorkOrderStatus.IN_WORK, WorkOrderStatus.RESOLVED, me.getUserId(), req.getResolution());
+
+        messageService.send(wo.getTenantId(), wo.getReporterId(), "WORK_ORDER",
+                "工单已修复",
+                "你的报修工单「" + wo.getTitle() + "」已修复，请确认",
+                wo.getId());
+
         return toResponse(wo);
     }
 

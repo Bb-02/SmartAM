@@ -46,6 +46,7 @@ public class UserService {
     private final AssetLogMapper assetLogMapper;
     private final WorkOrderMapper workOrderMapper;
     private final DepartmentMapper departmentMapper;
+    private final MessageService messageService;
 
     private JwtUser currentUser() {
         return (JwtUser) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -258,6 +259,13 @@ public class UserService {
                 log.setAction("RETURN");
                 log.setDescription("用户 " + target.getRealName() + " 变更部门，资产归还");
                 assetLogMapper.insert(log);
+            }
+
+            if (!userAssets.isEmpty()) {
+                messageService.send(target.getTenantId(), target.getId(), "ASSET",
+                        "部门变更通知",
+                        "你的部门已变更，名下资产已归还至原部门",
+                        null);
             }
         }
 

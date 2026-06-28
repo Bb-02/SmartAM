@@ -27,6 +27,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Service
@@ -38,6 +39,7 @@ public class AssetApplicationService {
     private final UserMapper userMapper;
     private final AssetApplicationLogMapper applicationLogMapper;
     private final AssetLogMapper assetLogMapper;
+    private final MessageService messageService;
 
     private JwtUser currentUser() {
         return (JwtUser) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -101,6 +103,29 @@ public class AssetApplicationService {
         app.setType(type);
         applicationMapper.insert(app);
         app = applicationMapper.selectById(app.getId());
+
+        // 通知分区管理员和租户管理员
+        List<User> regionAdmins = userMapper.selectList(new LambdaQueryWrapper<User>()
+                .eq(User::getTenantId, me.getTenantId())
+                .eq(User::getRegionId, app.getRegionId())
+                .eq(User::getRole, RoleEnum.ADMIN_REGION));
+        List<User> tenantAdmins = userMapper.selectList(new LambdaQueryWrapper<User>()
+                .eq(User::getTenantId, me.getTenantId())
+                .eq(User::getRole, RoleEnum.ADMIN_TENANT));
+        String applicantName = getUserName(me.getUserId());
+        for (User admin : regionAdmins) {
+            messageService.send(me.getTenantId(), admin.getId(), "APPLICATION",
+                    "新的资产申领",
+                    applicantName + " 提交了资产申领，等待审批",
+                    app.getId());
+        }
+        for (User admin : tenantAdmins) {
+            messageService.send(me.getTenantId(), admin.getId(), "APPLICATION",
+                    "新的资产申领",
+                    applicantName + " 提交了资产申领，等待审批",
+                    app.getId());
+        }
+
         return toResponse(app);
     }
 
@@ -204,6 +229,12 @@ public class AssetApplicationService {
         applicationMapper.updateById(app);
 
         writeLog(app.getId(), app.getAssetId(), AssetApplicationStatus.PENDING, AssetApplicationStatus.APPROVED, me.getUserId(), null);
+
+        messageService.send(app.getTenantId(), app.getApplicantId(), "APPLICATION",
+                "申领已通过",
+                "你的资产申领已通过",
+                app.getId());
+
         return toResponse(app);
     }
 
@@ -225,6 +256,12 @@ public class AssetApplicationService {
         applicationMapper.updateById(app);
 
         writeLog(app.getId(), app.getAssetId(), AssetApplicationStatus.PENDING, AssetApplicationStatus.REJECTED, me.getUserId(), remark);
+
+        messageService.send(app.getTenantId(), app.getApplicantId(), "APPLICATION",
+                "申领已拒绝",
+                "你的资产申领已拒绝",
+                app.getId());
+
         return toResponse(app);
     }
 

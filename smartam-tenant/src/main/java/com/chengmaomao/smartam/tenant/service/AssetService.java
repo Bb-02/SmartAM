@@ -48,6 +48,7 @@ public class AssetService {
     private final RegionMapper regionMapper;
     private final DepartmentMapper departmentMapper;
     private final UserMapper userMapper;
+    private final MessageService messageService;
 
     private JwtUser currentUser() {
         return (JwtUser) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -265,6 +266,23 @@ public class AssetService {
         }
 
         assetMapper.updateById(old);
+
+        // 通知领用人变更
+        Long newUserId = old.getUserId();
+        if (!Objects.equals(oldUserId, newUserId)) {
+            if (newUserId != null) {
+                messageService.send(old.getTenantId(), newUserId, "ASSET",
+                        "资产分配通知",
+                        "管理员为你分配了资产「" + old.getName() + "」",
+                        old.getId());
+            }
+            if (oldUserId != null) {
+                messageService.send(old.getTenantId(), oldUserId, "ASSET",
+                        "资产回收通知",
+                        "资产「" + old.getName() + "」已被管理员收回",
+                        old.getId());
+            }
+        }
 
         // 资产报废时，取消所有关联的活跃工单
         if (AssetStatus.SCRAPPED.equals(old.getStatus()) && !AssetStatus.SCRAPPED.equals(oldStatus)) {
