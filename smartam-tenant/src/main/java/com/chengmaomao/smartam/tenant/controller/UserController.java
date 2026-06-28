@@ -3,6 +3,7 @@ package com.chengmaomao.smartam.tenant.controller;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.chengmaomao.smartam.common.result.ApiResponse;
 import com.chengmaomao.smartam.tenant.dto.ChangePasswordRequest;
+import com.chengmaomao.smartam.tenant.dto.ResetPasswordRequest;
 import com.chengmaomao.smartam.tenant.dto.UserCreateRequest;
 import com.chengmaomao.smartam.tenant.dto.UserResponse;
 import com.chengmaomao.smartam.tenant.dto.UserSelfUpdateRequest;
@@ -68,6 +69,13 @@ public class UserController {
     public ApiResponse<UserResponse> update(@PathVariable Long id,
                                             @RequestBody UserUpdateRequest req) {
         return ApiResponse.ok(userService.update(id, req));
+    }
+
+    @PutMapping("/{id}/reset-password")
+    public ApiResponse<Void> resetPassword(@PathVariable Long id,
+                                            @Valid @RequestBody ResetPasswordRequest req) {
+        userService.resetPassword(id, req.getPassword());
+        return ApiResponse.ok();
     }
 
     @DeleteMapping("/{id}")

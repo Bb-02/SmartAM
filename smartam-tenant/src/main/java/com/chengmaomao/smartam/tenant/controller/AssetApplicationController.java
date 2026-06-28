@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.chengmaomao.smartam.common.result.ApiResponse;
 import com.chengmaomao.smartam.tenant.dto.AssetApplicationCreateRequest;
 import com.chengmaomao.smartam.tenant.dto.AssetApplicationResponse;
+import com.chengmaomao.smartam.tenant.entity.AssetApplicationLog;
 import com.chengmaomao.smartam.tenant.service.AssetApplicationService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +15,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/asset-applications")
@@ -56,5 +59,10 @@ public class AssetApplicationController {
     @PostMapping("/{id}/cancel")
     public ApiResponse<AssetApplicationResponse> cancel(@PathVariable Long id) {
         return ApiResponse.ok(applicationService.cancel(id));
+    }
+
+    @GetMapping("/{id}/logs")
+    public ApiResponse<List<AssetApplicationLog>> getLogs(@PathVariable Long id) {
+        return ApiResponse.ok(applicationService.getLogs(id));
     }
 }

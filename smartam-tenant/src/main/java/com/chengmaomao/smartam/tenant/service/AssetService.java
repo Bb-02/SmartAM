@@ -153,7 +153,7 @@ public class AssetService {
     }
 
     public IPage<AssetResponse> page(int page, int size, String status, String category,
-                                     Long regionId, Long deptId, String keyword) {
+                                     Long regionId, Long deptId, Long userId, String keyword) {
         JwtUser user = currentUser();
         LambdaQueryWrapper<Asset> qw = new LambdaQueryWrapper<>();
         applyRoleFilter(qw, user);
@@ -170,6 +170,9 @@ public class AssetService {
         }
         if (deptId != null) {
             qw.eq(Asset::getDeptId, deptId);
+        }
+        if (userId != null) {
+            qw.eq(Asset::getUserId, userId);
         }
         if (StringUtils.hasText(keyword)) {
             qw.and(w -> w.like(Asset::getName, keyword).or().like(Asset::getCode, keyword));

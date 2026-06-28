@@ -284,6 +284,13 @@ public class AssetApplicationService {
         return toResponse(app);
     }
 
+    public List<AssetApplicationLog> getLogs(Long id) {
+        getOwned(id);
+        return applicationLogMapper.selectList(new LambdaQueryWrapper<AssetApplicationLog>()
+                .eq(AssetApplicationLog::getApplicationId, id)
+                .orderByAsc(AssetApplicationLog::getCreatedAt));
+    }
+
     private AssetApplication getOwned(Long id) {
         JwtUser me = currentUser();
         AssetApplication app = applicationMapper.selectById(id);

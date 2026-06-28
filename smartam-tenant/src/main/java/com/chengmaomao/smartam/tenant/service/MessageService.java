@@ -42,10 +42,16 @@ public class MessageService {
         }
     }
 
-    public IPage<MessageResponse> page(int page, int size) {
+    public IPage<MessageResponse> page(int page, int size, String type, Integer isRead) {
         JwtUser me = currentUser();
         LambdaQueryWrapper<Message> qw = new LambdaQueryWrapper<>();
         qw.eq(Message::getRecipientId, me.getUserId());
+        if (type != null && !type.isBlank()) {
+            qw.eq(Message::getType, type);
+        }
+        if (isRead != null) {
+            qw.eq(Message::getIsRead, isRead);
+        }
         qw.orderByDesc(Message::getCreatedAt);
         Page<Message> result = messageMapper.selectPage(Page.of(page, size), qw);
         return result.convert(this::toResponse);

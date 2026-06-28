@@ -17,8 +17,10 @@ public class MessageController {
     @GetMapping
     public ApiResponse<IPage<MessageResponse>> page(
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return ApiResponse.ok(messageService.page(page, size));
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) Integer isRead) {
+        return ApiResponse.ok(messageService.page(page, size, type, isRead));
     }
 
     @GetMapping("/unread-count")

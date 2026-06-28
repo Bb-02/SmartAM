@@ -284,6 +284,17 @@ public class UserService {
     }
 
     @Transactional
+    public void resetPassword(Long id, String password) {
+        JwtUser me = currentUser();
+        if (!RoleEnum.ADMIN_TENANT.equals(me.getRole())) {
+            throw new BusinessException("仅租户管理员可重置密码");
+        }
+        User target = getOwnedUser(id);
+        target.setPassword(passwordEncoder.encode(password));
+        userMapper.updateById(target);
+    }
+
+    @Transactional
     public void delete(Long id) {
         User target = getOwnedUser(id);
         JwtUser me = currentUser();

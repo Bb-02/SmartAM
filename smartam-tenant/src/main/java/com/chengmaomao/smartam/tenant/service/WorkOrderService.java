@@ -179,7 +179,7 @@ public class WorkOrderService {
     }
 
     public IPage<WorkOrderResponse> page(int page, int size, String status, String priority,
-                                         String keyword, Long assetId, Long engineerId) {
+                                         String keyword, Long assetId, Long engineerId, Long reporterId) {
         JwtUser me = currentUser();
         LambdaQueryWrapper<WorkOrder> qw = new LambdaQueryWrapper<>();
         applyRoleFilter(qw, me);
@@ -198,6 +198,9 @@ public class WorkOrderService {
         }
         if (engineerId != null) {
             qw.eq(WorkOrder::getEngineerId, engineerId);
+        }
+        if (reporterId != null) {
+            qw.eq(WorkOrder::getReporterId, reporterId);
         }
         qw.orderByDesc(WorkOrder::getId);
 

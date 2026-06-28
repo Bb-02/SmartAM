@@ -53,8 +53,9 @@ public class WorkOrderController {
             @RequestParam(required = false) String priority,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Long assetId,
-            @RequestParam(required = false) Long engineerId) {
-        return ApiResponse.ok(workOrderService.page(page, size, status, priority, keyword, assetId, engineerId));
+            @RequestParam(required = false) Long engineerId,
+            @RequestParam(required = false) Long reporterId) {
+        return ApiResponse.ok(workOrderService.page(page, size, status, priority, keyword, assetId, engineerId, reporterId));
     }
 
     @PostMapping("/{id}/cancel")
