@@ -8,10 +8,14 @@ import com.chengmaomao.smartam.common.security.JwtUser;
 import com.chengmaomao.smartam.tenant.dto.DepartmentCreateRequest;
 import com.chengmaomao.smartam.tenant.dto.DepartmentResponse;
 import com.chengmaomao.smartam.tenant.dto.DepartmentUpdateRequest;
+import com.chengmaomao.smartam.tenant.entity.Asset;
 import com.chengmaomao.smartam.tenant.entity.Department;
+import com.chengmaomao.smartam.tenant.entity.Region;
 import com.chengmaomao.smartam.tenant.entity.RoleEnum;
 import com.chengmaomao.smartam.tenant.entity.User;
+import com.chengmaomao.smartam.tenant.mapper.AssetMapper;
 import com.chengmaomao.smartam.tenant.mapper.DepartmentMapper;
+import com.chengmaomao.smartam.tenant.mapper.RegionMapper;
 import com.chengmaomao.smartam.tenant.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -24,6 +28,8 @@ public class DepartmentService {
 
     private final DepartmentMapper departmentMapper;
     private final UserMapper userMapper;
+    private final AssetMapper assetMapper;
+    private final RegionMapper regionMapper;
 
     private JwtUser currentUser() {
         return (JwtUser) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -64,6 +70,10 @@ public class DepartmentService {
                 throw new BusinessException("请指定所属分区");
             }
             regionId = req.getRegionId();
+        }
+        Region region = regionMapper.selectById(regionId);
+        if (region == null || !region.getTenantId().equals(me.getTenantId())) {
+            throw new BusinessException("分区不存在");
         }
 
         Department dept = new Department();
@@ -137,6 +147,12 @@ public class DepartmentService {
                 .eq(Department::getParentId, id));
         if (childCount > 0) {
             throw new BusinessException("该部门下存在子部门，请先删除子部门");
+        }
+
+        Long assetCount = assetMapper.selectCount(new LambdaQueryWrapper<Asset>()
+                .eq(Asset::getDeptId, id));
+        if (assetCount > 0) {
+            throw new BusinessException("该部门下存在资产，请先迁移资产后再删除");
         }
 
         departmentMapper.deleteById(id);

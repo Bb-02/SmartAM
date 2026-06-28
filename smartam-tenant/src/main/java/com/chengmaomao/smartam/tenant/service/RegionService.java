@@ -11,6 +11,10 @@ import com.chengmaomao.smartam.tenant.dto.RegionUpdateRequest;
 import com.chengmaomao.smartam.tenant.entity.Region;
 import com.chengmaomao.smartam.tenant.entity.RoleEnum;
 import com.chengmaomao.smartam.tenant.entity.User;
+import com.chengmaomao.smartam.tenant.entity.Asset;
+import com.chengmaomao.smartam.tenant.entity.Department;
+import com.chengmaomao.smartam.tenant.mapper.AssetMapper;
+import com.chengmaomao.smartam.tenant.mapper.DepartmentMapper;
 import com.chengmaomao.smartam.tenant.mapper.RegionMapper;
 import com.chengmaomao.smartam.tenant.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +28,8 @@ public class RegionService {
 
     private final RegionMapper regionMapper;
     private final UserMapper userMapper;
+    private final AssetMapper assetMapper;
+    private final DepartmentMapper departmentMapper;
 
     private JwtUser currentUser() {
         return (JwtUser) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -136,6 +142,18 @@ public class RegionService {
                 .eq(User::getRegionId, id));
         if (userCount > 0) {
             throw new BusinessException("该分区下存在用户，请先迁移用户后再删除");
+        }
+
+        Long assetCount = assetMapper.selectCount(new LambdaQueryWrapper<Asset>()
+                .eq(Asset::getRegionId, id));
+        if (assetCount > 0) {
+            throw new BusinessException("该分区下存在资产，请先迁移资产后再删除");
+        }
+
+        Long deptCount = departmentMapper.selectCount(new LambdaQueryWrapper<Department>()
+                .eq(Department::getRegionId, id));
+        if (deptCount > 0) {
+            throw new BusinessException("该分区下存在部门，请先删除部门后再删除");
         }
 
         regionMapper.deleteById(id);

@@ -8,8 +8,10 @@ import com.chengmaomao.smartam.common.security.JwtUser;
 import com.chengmaomao.smartam.tenant.dto.UserCreateRequest;
 import com.chengmaomao.smartam.tenant.dto.UserResponse;
 import com.chengmaomao.smartam.tenant.dto.UserUpdateRequest;
+import com.chengmaomao.smartam.tenant.entity.Region;
 import com.chengmaomao.smartam.tenant.entity.RoleEnum;
 import com.chengmaomao.smartam.tenant.entity.User;
+import com.chengmaomao.smartam.tenant.mapper.RegionMapper;
 import com.chengmaomao.smartam.tenant.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -24,6 +26,7 @@ public class UserService {
 
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
+    private final RegionMapper regionMapper;
 
     private JwtUser currentUser() {
         return (JwtUser) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -91,9 +94,14 @@ public class UserService {
         User user = new User();
         user.setTenantId(me.getTenantId());
         // ADMIN_REGION 强制用自己的 region；ADMIN_TENANT 可指定
-        user.setRegionId(RoleEnum.ADMIN_REGION.equals(me.getRole())
+        Long regionId = RoleEnum.ADMIN_REGION.equals(me.getRole())
                 ? me.getRegionId()
-                : (req.getRegionId() != null ? req.getRegionId() : me.getRegionId()));
+                : (req.getRegionId() != null ? req.getRegionId() : me.getRegionId());
+        Region region = regionMapper.selectById(regionId);
+        if (region == null || !region.getTenantId().equals(me.getTenantId())) {
+            throw new BusinessException("分区不存在");
+        }
+        user.setRegionId(regionId);
         user.setDeptId(req.getDeptId());
         user.setUsername(req.getUsername());
         user.setPassword(passwordEncoder.encode(req.getPassword()));
@@ -152,6 +160,10 @@ public class UserService {
             JwtUser me = currentUser();
             if (RoleEnum.ADMIN_REGION.equals(me.getRole())) {
                 throw new BusinessException("区域管理员无权变更用户分区");
+            }
+            Region region = regionMapper.selectById(req.getRegionId());
+            if (region == null || !region.getTenantId().equals(target.getTenantId())) {
+                throw new BusinessException("分区不存在");
             }
             target.setRegionId(req.getRegionId());
         }

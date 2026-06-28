@@ -11,9 +11,14 @@ import com.chengmaomao.smartam.tenant.dto.AssetUpdateRequest;
 import com.chengmaomao.smartam.tenant.entity.Asset;
 import com.chengmaomao.smartam.tenant.entity.AssetLog;
 import com.chengmaomao.smartam.tenant.entity.AssetStatus;
+import com.chengmaomao.smartam.tenant.entity.Region;
 import com.chengmaomao.smartam.tenant.entity.RoleEnum;
+import com.chengmaomao.smartam.tenant.entity.WorkOrder;
+import com.chengmaomao.smartam.tenant.entity.WorkOrderStatus;
 import com.chengmaomao.smartam.tenant.mapper.AssetLogMapper;
 import com.chengmaomao.smartam.tenant.mapper.AssetMapper;
+import com.chengmaomao.smartam.tenant.mapper.RegionMapper;
+import com.chengmaomao.smartam.tenant.mapper.WorkOrderMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -30,6 +35,8 @@ public class AssetService {
 
     private final AssetMapper assetMapper;
     private final AssetLogMapper assetLogMapper;
+    private final WorkOrderMapper workOrderMapper;
+    private final RegionMapper regionMapper;
 
     private JwtUser currentUser() {
         return (JwtUser) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -77,10 +84,23 @@ public class AssetService {
             throw new BusinessException("无权限创建资产");
         }
 
+        if (req.getCode() != null) {
+            Long codeCount = assetMapper.selectCount(new LambdaQueryWrapper<Asset>()
+                    .eq(Asset::getTenantId, user.getTenantId())
+                    .eq(Asset::getCode, req.getCode()));
+            if (codeCount > 0) {
+                throw new BusinessException("该资产编码已存在");
+            }
+        }
+
         Asset asset = new Asset();
         asset.setTenantId(user.getTenantId());
         // ADMIN_TENANT 可指定分区，否则用自身分区
         if (RoleEnum.ADMIN_TENANT.equals(user.getRole()) && req.getRegionId() != null) {
+            Region region = regionMapper.selectById(req.getRegionId());
+            if (region == null || !region.getTenantId().equals(user.getTenantId())) {
+                throw new BusinessException("分区不存在");
+            }
             asset.setRegionId(req.getRegionId());
         } else {
             asset.setRegionId(user.getRegionId());
@@ -163,6 +183,10 @@ public class AssetService {
 
         if (req.getRegionId() != null) {
             if (RoleEnum.ADMIN_TENANT.equals(user.getRole())) {
+                Region region = regionMapper.selectById(req.getRegionId());
+                if (region == null || !region.getTenantId().equals(user.getTenantId())) {
+                    throw new BusinessException("分区不存在");
+                }
                 old.setRegionId(req.getRegionId());
             } else {
                 throw new BusinessException("仅租户管理员可变更资产归属分区");
@@ -171,7 +195,16 @@ public class AssetService {
         if (req.getDeptId() != null) old.setDeptId(req.getDeptId());
         if (req.getUserId() != null) old.setUserId(req.getUserId());
         if (req.getName() != null) old.setName(req.getName());
-        if (req.getCode() != null) old.setCode(req.getCode());
+        if (req.getCode() != null) {
+            Long codeCount = assetMapper.selectCount(new LambdaQueryWrapper<Asset>()
+                    .eq(Asset::getTenantId, user.getTenantId())
+                    .eq(Asset::getCode, req.getCode())
+                    .ne(Asset::getId, id));
+            if (codeCount > 0) {
+                throw new BusinessException("该资产编码已存在");
+            }
+            old.setCode(req.getCode());
+        }
         if (req.getCategory() != null) old.setCategory(req.getCategory());
         if (req.getModel() != null) old.setModel(req.getModel());
         if (req.getBrand() != null) old.setBrand(req.getBrand());
@@ -262,6 +295,14 @@ public class AssetService {
         if (!RoleEnum.ADMIN_TENANT.equals(user.getRole())) {
             throw new BusinessException("仅租户管理员可删除资产");
         }
+
+        Long woCount = workOrderMapper.selectCount(new LambdaQueryWrapper<WorkOrder>()
+                .eq(WorkOrder::getAssetId, id)
+                .notIn(WorkOrder::getStatus, WorkOrderStatus.CLOSED, WorkOrderStatus.CANCELLED));
+        if (woCount > 0) {
+            throw new BusinessException("存在关联此资产的活跃工单，无法删除");
+        }
+
         assetMapper.deleteById(asset.getId());
     }
 
