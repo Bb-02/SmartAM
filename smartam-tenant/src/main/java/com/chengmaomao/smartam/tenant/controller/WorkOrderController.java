@@ -42,8 +42,14 @@ public class WorkOrderController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String status,
-            @RequestParam(required = false) String priority) {
-        return ApiResponse.ok(workOrderService.page(page, size, status, priority));
+            @RequestParam(required = false) String priority,
+            @RequestParam(required = false) String keyword) {
+        return ApiResponse.ok(workOrderService.page(page, size, status, priority, keyword));
+    }
+
+    @PostMapping("/{id}/cancel")
+    public ApiResponse<WorkOrderResponse> cancel(@PathVariable Long id) {
+        return ApiResponse.ok(workOrderService.cancel(id));
     }
 
     @PostMapping("/{id}/claim")

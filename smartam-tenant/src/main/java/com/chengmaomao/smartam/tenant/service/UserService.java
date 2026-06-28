@@ -111,7 +111,7 @@ public class UserService {
         return toResponse(getOwnedUser(id));
     }
 
-    public IPage<UserResponse> page(int page, int size, String role, Long deptId, String keyword) {
+    public IPage<UserResponse> page(int page, int size, String role, Long regionId, Long deptId, String keyword) {
         JwtUser me = currentUser();
         if (!RoleEnum.ADMIN_REGION.equals(me.getRole()) && !RoleEnum.ADMIN_TENANT.equals(me.getRole())) {
             throw new BusinessException("无权限查看用户列表");
@@ -120,6 +120,10 @@ public class UserService {
         LambdaQueryWrapper<User> qw = new LambdaQueryWrapper<>();
         applyRoleFilter(qw, me);
 
+        // ADMIN_TENANT 可额外按分区筛选
+        if (regionId != null && RoleEnum.ADMIN_TENANT.equals(me.getRole())) {
+            qw.eq(User::getRegionId, regionId);
+        }
         if (StringUtils.hasText(role)) {
             qw.eq(User::getRole, role);
         }

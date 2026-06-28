@@ -106,7 +106,7 @@ public class WorkOrderService {
         return toResponse(getOwnedWorkOrder(id));
     }
 
-    public IPage<WorkOrderResponse> page(int page, int size, String status, String priority) {
+    public IPage<WorkOrderResponse> page(int page, int size, String status, String priority, String keyword) {
         JwtUser me = currentUser();
         LambdaQueryWrapper<WorkOrder> qw = new LambdaQueryWrapper<>();
         applyRoleFilter(qw, me);
@@ -116,6 +116,9 @@ public class WorkOrderService {
         }
         if (priority != null && !priority.isBlank()) {
             qw.eq(WorkOrder::getPriority, priority);
+        }
+        if (keyword != null && !keyword.isBlank()) {
+            qw.and(w -> w.like(WorkOrder::getTitle, keyword));
         }
         qw.orderByDesc(WorkOrder::getId);
 
@@ -185,10 +188,39 @@ public class WorkOrderService {
     }
 
     @Transactional
+    public WorkOrderResponse cancel(Long id) {
+        JwtUser me = currentUser();
+        WorkOrder wo = getOwnedWorkOrder(id);
+
+        if (!WorkOrderStatus.PENDING.equals(wo.getStatus())) {
+            throw new BusinessException("仅待处理状态的工单可取消");
+        }
+        if (!me.getUserId().equals(wo.getReporterId())) {
+            throw new BusinessException("仅提交人可取消工单");
+        }
+
+        wo.setStatus(WorkOrderStatus.CANCELLED);
+        workOrderMapper.updateById(wo);
+
+        writeLog(wo.getId(), WorkOrderStatus.PENDING, WorkOrderStatus.CANCELLED, me.getUserId(), "提交人取消");
+        return toResponse(wo);
+    }
+
+    @Transactional
     public WorkOrderResponse reject(Long id, String remark) {
         JwtUser me = currentUser();
         WorkOrder wo = getOwnedWorkOrder(id);
 
+        // 管理员驳回 PENDING → CLOSED
+        if ((RoleEnum.ADMIN_TENANT.equals(me.getRole()) || RoleEnum.ADMIN_REGION.equals(me.getRole()))
+                && WorkOrderStatus.PENDING.equals(wo.getStatus())) {
+            wo.setStatus(WorkOrderStatus.CLOSED);
+            workOrderMapper.updateById(wo);
+            writeLog(wo.getId(), WorkOrderStatus.PENDING, WorkOrderStatus.CLOSED, me.getUserId(), remark);
+            return toResponse(wo);
+        }
+
+        // 员工驳回 RESOLVED → IN_WORK
         if (!WorkOrderStatus.RESOLVED.equals(wo.getStatus())) {
             throw new BusinessException("工单状态不正确");
         }
@@ -198,7 +230,6 @@ public class WorkOrderService {
 
         wo.setStatus(WorkOrderStatus.IN_WORK);
         workOrderMapper.updateById(wo);
-
         writeLog(wo.getId(), WorkOrderStatus.RESOLVED, WorkOrderStatus.IN_WORK, me.getUserId(), remark);
         return toResponse(wo);
     }

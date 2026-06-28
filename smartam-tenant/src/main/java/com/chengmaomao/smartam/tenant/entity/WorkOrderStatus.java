@@ -7,4 +7,5 @@ public final class WorkOrderStatus {
     public static final String IN_WORK = "IN_WORK";
     public static final String RESOLVED = "RESOLVED";
     public static final String CLOSED = "CLOSED";
+    public static final String CANCELLED = "CANCELLED";
 }

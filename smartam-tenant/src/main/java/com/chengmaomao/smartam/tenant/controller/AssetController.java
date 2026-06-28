@@ -44,9 +44,10 @@ public class AssetController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String category,
+            @RequestParam(required = false) Long regionId,
             @RequestParam(required = false) Long deptId,
             @RequestParam(required = false) String keyword) {
-        return ApiResponse.ok(assetService.page(page, size, status, category, deptId, keyword));
+        return ApiResponse.ok(assetService.page(page, size, status, category, regionId, deptId, keyword));
     }
 
     @PutMapping("/{id}")

@@ -40,9 +40,10 @@ public class UserController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String role,
+            @RequestParam(required = false) Long regionId,
             @RequestParam(required = false) Long deptId,
             @RequestParam(required = false) String keyword) {
-        return ApiResponse.ok(userService.page(page, size, role, deptId, keyword));
+        return ApiResponse.ok(userService.page(page, size, role, regionId, deptId, keyword));
     }
 
     @PutMapping("/{id}")

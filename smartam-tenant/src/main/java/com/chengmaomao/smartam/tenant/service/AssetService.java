@@ -120,11 +120,15 @@ public class AssetService {
     }
 
     public IPage<AssetResponse> page(int page, int size, String status, String category,
-                                     Long deptId, String keyword) {
+                                     Long regionId, Long deptId, String keyword) {
         JwtUser user = currentUser();
         LambdaQueryWrapper<Asset> qw = new LambdaQueryWrapper<>();
         applyRoleFilter(qw, user);
 
+        // ADMIN_TENANT 可额外按分区筛选
+        if (regionId != null && RoleEnum.ADMIN_TENANT.equals(user.getRole())) {
+            qw.eq(Asset::getRegionId, regionId);
+        }
         if (StringUtils.hasText(status)) {
             qw.eq(Asset::getStatus, status);
         }
@@ -184,6 +188,11 @@ public class AssetService {
         if (req.getPurchaseDate() != null) old.setPurchaseDate(req.getPurchaseDate());
         if (req.getWarrantyEnd() != null) old.setWarrantyEnd(req.getWarrantyEnd());
         if (req.getDescription() != null) old.setDescription(req.getDescription());
+
+        // 分配领用人时，自动从 IN_STORAGE 切为 IN_USE
+        if (oldUserId == null && old.getUserId() != null && AssetStatus.IN_STORAGE.equals(oldStatus)) {
+            old.setStatus(AssetStatus.IN_USE);
+        }
 
         // 构建变更描述
         List<String> changes = new ArrayList<>();
