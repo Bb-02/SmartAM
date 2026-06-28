@@ -227,6 +227,9 @@ public class AssetService {
             if (!AssetStatus.isValid(req.getStatus())) {
                 throw new BusinessException("无效的资产状态: " + req.getStatus());
             }
+            if (AssetStatus.SCRAPPED.equals(oldStatus) && !AssetStatus.SCRAPPED.equals(req.getStatus())) {
+                throw new BusinessException("已报废的资产不可恢复");
+            }
             old.setStatus(req.getStatus());
         }
         if (req.getLocation() != null) old.setLocation(req.getLocation());
