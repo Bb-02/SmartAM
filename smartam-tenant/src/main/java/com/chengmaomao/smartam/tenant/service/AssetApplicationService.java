@@ -14,6 +14,7 @@ import com.chengmaomao.smartam.tenant.entity.AssetStatus;
 import com.chengmaomao.smartam.tenant.entity.RoleEnum;
 import com.chengmaomao.smartam.tenant.entity.User;
 import com.chengmaomao.smartam.tenant.entity.AssetApplicationLog;
+import com.chengmaomao.smartam.tenant.entity.AssetApplicationType;
 import com.chengmaomao.smartam.tenant.entity.AssetLog;
 import com.chengmaomao.smartam.tenant.mapper.AssetApplicationLogMapper;
 import com.chengmaomao.smartam.tenant.mapper.AssetLogMapper;
@@ -49,12 +50,34 @@ public class AssetApplicationService {
             throw new BusinessException("仅员工可提交申领");
         }
 
+        String type = req.getType() != null ? req.getType() : AssetApplicationType.APPLY;
+
         Asset asset = assetMapper.selectById(req.getAssetId());
         if (asset == null || !asset.getTenantId().equals(me.getTenantId())) {
             throw new BusinessException("资产不存在");
         }
-        if (!AssetStatus.IN_STORAGE.equals(asset.getStatus())) {
-            throw new BusinessException("该资产不可申领，仅库存在库资产可申领");
+
+        switch (type) {
+            case AssetApplicationType.APPLY:
+                if (!AssetStatus.IN_STORAGE.equals(asset.getStatus())) {
+                    throw new BusinessException("该资产不在库，无法申领");
+                }
+                break;
+            case AssetApplicationType.SCRAP:
+                if (AssetStatus.SCRAPPED.equals(asset.getStatus())) {
+                    throw new BusinessException("该资产已报废");
+                }
+                break;
+            case AssetApplicationType.TRANSFER:
+                if (AssetStatus.SCRAPPED.equals(asset.getStatus())) {
+                    throw new BusinessException("已报废资产不可转移");
+                }
+                if (req.getTargetUserId() == null && req.getTargetDeptId() == null) {
+                    throw new BusinessException("转移申请需指定目标领用人或目标部门");
+                }
+                break;
+            default:
+                throw new BusinessException("无效的申请类型");
         }
 
         // 防止重复申领
@@ -63,7 +86,7 @@ public class AssetApplicationService {
                 .eq(AssetApplication::getApplicantId, me.getUserId())
                 .eq(AssetApplication::getStatus, AssetApplicationStatus.PENDING));
         if (dup > 0) {
-            throw new BusinessException("您已对该资产提交过申领，请等待审批");
+            throw new BusinessException("您已对该资产提交过申请，请等待审批");
         }
 
         AssetApplication app = new AssetApplication();
@@ -71,8 +94,11 @@ public class AssetApplicationService {
         app.setRegionId(asset.getRegionId());
         app.setAssetId(req.getAssetId());
         app.setApplicantId(me.getUserId());
+        app.setTargetUserId(req.getTargetUserId());
+        app.setTargetDeptId(req.getTargetDeptId());
         app.setReason(req.getReason());
         app.setStatus(AssetApplicationStatus.PENDING);
+        app.setType(type);
         applicationMapper.insert(app);
         app = applicationMapper.selectById(app.getId());
         return toResponse(app);
@@ -119,21 +145,53 @@ public class AssetApplicationService {
         if (asset == null || !asset.getTenantId().equals(me.getTenantId())) {
             throw new BusinessException("资产不存在");
         }
-        if (!AssetStatus.IN_STORAGE.equals(asset.getStatus())) {
-            throw new BusinessException("该资产已被分配，无法重复审批");
-        }
 
-        // 自动分配：asset 归属申请人
-        User applicant = userMapper.selectById(app.getApplicantId());
-        asset.setUserId(app.getApplicantId());
-        if (applicant != null && applicant.getDeptId() != null) {
-            asset.setDeptId(applicant.getDeptId());
+        String type = app.getType() != null ? app.getType() : AssetApplicationType.APPLY;
+        String description;
+        switch (type) {
+            case AssetApplicationType.APPLY: {
+                if (!AssetStatus.IN_STORAGE.equals(asset.getStatus())) {
+                    throw new BusinessException("该资产已被分配，无法重复审批");
+                }
+                User applicant = userMapper.selectById(app.getApplicantId());
+                asset.setUserId(app.getApplicantId());
+                if (applicant != null && applicant.getDeptId() != null) {
+                    asset.setDeptId(applicant.getDeptId());
+                }
+                asset.setStatus(AssetStatus.IN_USE);
+                description = "申领审批通过，分配给 " + (applicant != null ? applicant.getRealName() : "用户" + app.getApplicantId());
+                break;
+            }
+            case AssetApplicationType.SCRAP: {
+                if (AssetStatus.SCRAPPED.equals(asset.getStatus())) {
+                    throw new BusinessException("该资产已报废");
+                }
+                asset.setStatus(AssetStatus.SCRAPPED);
+                description = "报废申请审批通过";
+                break;
+            }
+            case AssetApplicationType.TRANSFER: {
+                if (AssetStatus.SCRAPPED.equals(asset.getStatus())) {
+                    throw new BusinessException("已报废资产不可转移");
+                }
+                if (app.getTargetUserId() != null) {
+                    asset.setUserId(app.getTargetUserId());
+                }
+                if (app.getTargetDeptId() != null) {
+                    asset.setDeptId(app.getTargetDeptId());
+                }
+                if (AssetStatus.IN_STORAGE.equals(asset.getStatus()) && app.getTargetUserId() != null) {
+                    asset.setStatus(AssetStatus.IN_USE);
+                }
+                description = "转移申请审批通过";
+                break;
+            }
+            default:
+                throw new BusinessException("无效的申请类型");
         }
-        asset.setStatus(AssetStatus.IN_USE);
         assetMapper.updateById(asset);
 
-        writeAssetLog(asset, me.getUserId(), "ASSIGN",
-                "申领审批通过，分配给 " + (applicant != null ? applicant.getRealName() : "用户" + app.getApplicantId()));
+        writeAssetLog(asset, me.getUserId(), app.getType(), description);
 
         app.setStatus(AssetApplicationStatus.APPROVED);
         app.setApproverId(me.getUserId());
@@ -222,6 +280,7 @@ public class AssetApplicationService {
         r.setApplicantName(getUserName(a.getApplicantId()));
         r.setReason(a.getReason());
         r.setStatus(a.getStatus());
+        r.setType(a.getType());
         r.setApproverId(a.getApproverId());
         r.setApproverName(getUserName(a.getApproverId()));
         r.setRemark(a.getRemark());

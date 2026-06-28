@@ -13,8 +13,11 @@ public class AssetApplication extends BaseEntity {
     private Long regionId;
     private Long assetId;
     private Long applicantId;
+    private Long targetUserId;
+    private Long targetDeptId;
     private String reason;
     private String status;
+    private String type;
     private Long approverId;
     private String remark;
 }

@@ -15,6 +15,7 @@ public class AssetApplicationResponse {
     private String applicantName;
     private String reason;
     private String status;
+    private String type;
     private Long approverId;
     private String approverName;
     private String remark;

@@ -8,6 +8,7 @@ import com.chengmaomao.smartam.common.security.JwtUser;
 import com.chengmaomao.smartam.tenant.dto.WorkOrderConfirmRequest;
 import com.chengmaomao.smartam.tenant.dto.WorkOrderCreateRequest;
 import com.chengmaomao.smartam.tenant.dto.WorkOrderResolveRequest;
+import com.chengmaomao.smartam.tenant.dto.WorkOrderUpdateRequest;
 import com.chengmaomao.smartam.tenant.dto.WorkOrderResponse;
 import com.chengmaomao.smartam.tenant.entity.Asset;
 import com.chengmaomao.smartam.tenant.entity.RoleEnum;
@@ -121,6 +122,27 @@ public class WorkOrderService {
 
     public WorkOrderResponse getById(Long id) {
         return toResponse(getOwnedWorkOrder(id));
+    }
+
+    @Transactional
+    public WorkOrderResponse update(Long id, WorkOrderUpdateRequest req) {
+        JwtUser me = currentUser();
+        WorkOrder wo = getOwnedWorkOrder(id);
+
+        if (!me.getUserId().equals(wo.getReporterId())) {
+            throw new BusinessException("仅提交人可编辑工单");
+        }
+        if (!WorkOrderStatus.PENDING.equals(wo.getStatus())) {
+            throw new BusinessException("仅待处理状态的工单可编辑");
+        }
+
+        if (req.getTitle() != null) wo.setTitle(req.getTitle());
+        if (req.getDescription() != null) wo.setDescription(req.getDescription());
+        if (req.getPriority() != null) wo.setPriority(req.getPriority());
+        workOrderMapper.updateById(wo);
+
+        writeLog(wo.getId(), WorkOrderStatus.PENDING, WorkOrderStatus.PENDING, me.getUserId(), "编辑工单");
+        return toResponse(wo);
     }
 
     public IPage<WorkOrderResponse> page(int page, int size, String status, String priority, String keyword) {

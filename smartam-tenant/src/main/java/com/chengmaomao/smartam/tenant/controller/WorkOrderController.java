@@ -6,6 +6,7 @@ import com.chengmaomao.smartam.tenant.dto.WorkOrderConfirmRequest;
 import com.chengmaomao.smartam.tenant.dto.WorkOrderCreateRequest;
 import com.chengmaomao.smartam.tenant.dto.WorkOrderResolveRequest;
 import com.chengmaomao.smartam.tenant.dto.WorkOrderResponse;
+import com.chengmaomao.smartam.tenant.dto.WorkOrderUpdateRequest;
 import com.chengmaomao.smartam.tenant.entity.WorkOrderLog;
 import com.chengmaomao.smartam.tenant.service.WorkOrderService;
 import jakarta.validation.Valid;
@@ -13,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -35,6 +37,12 @@ public class WorkOrderController {
     @GetMapping("/{id}")
     public ApiResponse<WorkOrderResponse> getById(@PathVariable Long id) {
         return ApiResponse.ok(workOrderService.getById(id));
+    }
+
+    @PutMapping("/{id}")
+    public ApiResponse<WorkOrderResponse> update(@PathVariable Long id,
+                                                  @RequestBody WorkOrderUpdateRequest req) {
+        return ApiResponse.ok(workOrderService.update(id, req));
     }
 
     @GetMapping
