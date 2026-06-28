@@ -2,8 +2,10 @@ package com.chengmaomao.smartam.tenant.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.chengmaomao.smartam.common.result.ApiResponse;
+import com.chengmaomao.smartam.tenant.dto.ChangePasswordRequest;
 import com.chengmaomao.smartam.tenant.dto.UserCreateRequest;
 import com.chengmaomao.smartam.tenant.dto.UserResponse;
+import com.chengmaomao.smartam.tenant.dto.UserSelfUpdateRequest;
 import com.chengmaomao.smartam.tenant.dto.UserUpdateRequest;
 import com.chengmaomao.smartam.tenant.service.UserService;
 import jakarta.validation.Valid;
@@ -28,6 +30,22 @@ public class UserController {
     @PostMapping
     public ApiResponse<UserResponse> create(@Valid @RequestBody UserCreateRequest req) {
         return ApiResponse.ok(userService.create(req));
+    }
+
+    @GetMapping("/me")
+    public ApiResponse<UserResponse> getMe() {
+        return ApiResponse.ok(userService.getMe());
+    }
+
+    @PutMapping("/me")
+    public ApiResponse<UserResponse> updateMe(@RequestBody UserSelfUpdateRequest req) {
+        return ApiResponse.ok(userService.updateMe(req));
+    }
+
+    @PutMapping("/me/password")
+    public ApiResponse<Void> changePassword(@Valid @RequestBody ChangePasswordRequest req) {
+        userService.changePassword(req);
+        return ApiResponse.ok();
     }
 
     @GetMapping("/{id}")

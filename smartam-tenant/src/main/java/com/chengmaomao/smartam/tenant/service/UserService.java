@@ -5,8 +5,10 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.chengmaomao.smartam.common.exception.BusinessException;
 import com.chengmaomao.smartam.common.security.JwtUser;
+import com.chengmaomao.smartam.tenant.dto.ChangePasswordRequest;
 import com.chengmaomao.smartam.tenant.dto.UserCreateRequest;
 import com.chengmaomao.smartam.tenant.dto.UserResponse;
+import com.chengmaomao.smartam.tenant.dto.UserSelfUpdateRequest;
 import com.chengmaomao.smartam.tenant.dto.UserUpdateRequest;
 import com.chengmaomao.smartam.tenant.entity.Asset;
 import com.chengmaomao.smartam.tenant.entity.AssetLog;
@@ -143,6 +145,32 @@ public class UserService {
 
     public UserResponse getById(Long id) {
         return toResponse(getOwnedUser(id));
+    }
+
+    public UserResponse getMe() {
+        return toResponse(getOwnedUser(currentUser().getUserId()));
+    }
+
+    @Transactional
+    public UserResponse updateMe(UserSelfUpdateRequest req) {
+        JwtUser me = currentUser();
+        User user = getOwnedUser(me.getUserId());
+        if (req.getRealName() != null) user.setRealName(req.getRealName());
+        if (req.getPhone() != null) user.setPhone(req.getPhone());
+        if (req.getEmail() != null) user.setEmail(req.getEmail());
+        userMapper.updateById(user);
+        return toResponse(user);
+    }
+
+    @Transactional
+    public void changePassword(ChangePasswordRequest req) {
+        JwtUser me = currentUser();
+        User user = getOwnedUser(me.getUserId());
+        if (!passwordEncoder.matches(req.getOldPassword(), user.getPassword())) {
+            throw new BusinessException("旧密码错误");
+        }
+        user.setPassword(passwordEncoder.encode(req.getNewPassword()));
+        userMapper.updateById(user);
     }
 
     public IPage<UserResponse> page(int page, int size, String role, Long regionId, Long deptId, String keyword) {
