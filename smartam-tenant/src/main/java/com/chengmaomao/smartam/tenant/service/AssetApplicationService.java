@@ -7,6 +7,7 @@ import com.chengmaomao.smartam.common.exception.BusinessException;
 import com.chengmaomao.smartam.common.security.JwtUser;
 import com.chengmaomao.smartam.tenant.dto.AssetApplicationCreateRequest;
 import com.chengmaomao.smartam.tenant.dto.AssetApplicationResponse;
+import com.chengmaomao.smartam.tenant.dto.AssetApplicationUpdateRequest;
 import com.chengmaomao.smartam.tenant.entity.Asset;
 import com.chengmaomao.smartam.tenant.entity.AssetApplication;
 import com.chengmaomao.smartam.tenant.entity.AssetApplicationStatus;
@@ -16,19 +17,22 @@ import com.chengmaomao.smartam.tenant.entity.User;
 import com.chengmaomao.smartam.tenant.entity.AssetApplicationLog;
 import com.chengmaomao.smartam.tenant.entity.AssetApplicationType;
 import com.chengmaomao.smartam.tenant.entity.AssetLog;
+import com.chengmaomao.smartam.tenant.entity.WorkOrder;
+import com.chengmaomao.smartam.tenant.entity.WorkOrderLog;
+import com.chengmaomao.smartam.tenant.entity.WorkOrderStatus;
 import com.chengmaomao.smartam.tenant.mapper.AssetApplicationLogMapper;
 import com.chengmaomao.smartam.tenant.mapper.AssetLogMapper;
 import com.chengmaomao.smartam.tenant.mapper.AssetApplicationMapper;
 import com.chengmaomao.smartam.tenant.mapper.AssetMapper;
 import com.chengmaomao.smartam.tenant.mapper.UserMapper;
+import com.chengmaomao.smartam.tenant.mapper.WorkOrderLogMapper;
+import com.chengmaomao.smartam.tenant.mapper.WorkOrderMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -39,6 +43,8 @@ public class AssetApplicationService {
     private final UserMapper userMapper;
     private final AssetApplicationLogMapper applicationLogMapper;
     private final AssetLogMapper assetLogMapper;
+    private final WorkOrderMapper workOrderMapper;
+    private final WorkOrderLogMapper workOrderLogMapper;
     private final MessageService messageService;
 
     private JwtUser currentUser() {
@@ -57,6 +63,9 @@ public class AssetApplicationService {
         Asset asset = assetMapper.selectById(req.getAssetId());
         if (asset == null || !asset.getTenantId().equals(me.getTenantId())) {
             throw new BusinessException("资产不存在");
+        }
+        if (!asset.getRegionId().equals(me.getRegionId())) {
+            throw new BusinessException("只能申领本分区资产");
         }
 
         switch (type) {
@@ -82,13 +91,12 @@ public class AssetApplicationService {
                 throw new BusinessException("无效的申请类型");
         }
 
-        // 防止重复申领
+        // 防止多人同时申领同一资产
         Long dup = applicationMapper.selectCount(new LambdaQueryWrapper<AssetApplication>()
                 .eq(AssetApplication::getAssetId, req.getAssetId())
-                .eq(AssetApplication::getApplicantId, me.getUserId())
                 .eq(AssetApplication::getStatus, AssetApplicationStatus.PENDING));
         if (dup > 0) {
-            throw new BusinessException("您已对该资产提交过申请，请等待审批");
+            throw new BusinessException("该资产已有待审批的申领，请稍后再试");
         }
 
         AssetApplication app = new AssetApplication();
@@ -145,7 +153,7 @@ public class AssetApplicationService {
         } else if (applicantId != null) {
             qw.eq(AssetApplication::getApplicantId, applicantId);
         }
-        if (RoleEnum.ADMIN_REGION.equals(me.getRole())) {
+        if (!RoleEnum.ADMIN_TENANT.equals(me.getRole()) && !RoleEnum.EMPLOYEE.equals(me.getRole())) {
             qw.eq(AssetApplication::getRegionId, me.getRegionId());
         }
         if (status != null && !status.isBlank()) {
@@ -156,6 +164,7 @@ public class AssetApplicationService {
         }
         qw.orderByDesc(AssetApplication::getId);
 
+        nameCache.clear();
         Page<AssetApplication> result = applicationMapper.selectPage(Page.of(page, size), qw);
         return result.convert(this::toResponse);
     }
@@ -175,6 +184,10 @@ public class AssetApplicationService {
         Asset asset = assetMapper.selectById(app.getAssetId());
         if (asset == null || !asset.getTenantId().equals(me.getTenantId())) {
             throw new BusinessException("资产不存在");
+        }
+        if (RoleEnum.ADMIN_REGION.equals(me.getRole())
+                && !asset.getRegionId().equals(me.getRegionId())) {
+            throw new BusinessException("该资产已不属于你的管辖范围");
         }
 
         String type = app.getType() != null ? app.getType() : AssetApplicationType.APPLY;
@@ -198,6 +211,7 @@ public class AssetApplicationService {
                     throw new BusinessException("该资产已报废");
                 }
                 asset.setStatus(AssetStatus.SCRAPPED);
+                cancelActiveWorkOrdersForAsset(asset.getId(), me.getUserId());
                 description = "报废申请审批通过";
                 break;
             }
@@ -206,6 +220,13 @@ public class AssetApplicationService {
                     throw new BusinessException("已报废资产不可转移");
                 }
                 if (app.getTargetUserId() != null) {
+                    User targetUser = userMapper.selectById(app.getTargetUserId());
+                    if (targetUser == null || !targetUser.getTenantId().equals(asset.getTenantId())) {
+                        throw new BusinessException("目标用户不存在");
+                    }
+                    if (!targetUser.getRegionId().equals(asset.getRegionId())) {
+                        throw new BusinessException("目标用户不属于该分区");
+                    }
                     asset.setUserId(app.getTargetUserId());
                 }
                 if (app.getTargetDeptId() != null) {
@@ -284,6 +305,26 @@ public class AssetApplicationService {
         return toResponse(app);
     }
 
+    @Transactional
+    public AssetApplicationResponse update(Long id, AssetApplicationUpdateRequest req) {
+        JwtUser me = currentUser();
+        AssetApplication app = getOwned(id);
+
+        if (!AssetApplicationStatus.PENDING.equals(app.getStatus())) {
+            throw new BusinessException("仅待审批状态的申请可修改");
+        }
+        if (!me.getUserId().equals(app.getApplicantId())) {
+            throw new BusinessException("仅申请人可修改");
+        }
+
+        if (req.getReason() != null) {
+            app.setReason(req.getReason());
+        }
+
+        applicationMapper.updateById(app);
+        return toResponse(app);
+    }
+
     public List<AssetApplicationLog> getLogs(Long id) {
         getOwned(id);
         return applicationLogMapper.selectList(new LambdaQueryWrapper<AssetApplicationLog>()
@@ -297,7 +338,8 @@ public class AssetApplicationService {
         if (app == null || !app.getTenantId().equals(me.getTenantId())) {
             throw new BusinessException("申领记录不存在");
         }
-        if (RoleEnum.ADMIN_REGION.equals(me.getRole())
+        if (!RoleEnum.ADMIN_TENANT.equals(me.getRole())
+                && !RoleEnum.EMPLOYEE.equals(me.getRole())
                 && !app.getRegionId().equals(me.getRegionId())) {
             throw new BusinessException("无权查看该申领");
         }
@@ -308,7 +350,7 @@ public class AssetApplicationService {
         return app;
     }
 
-    private final Map<Long, String> nameCache = new HashMap<>();
+    private final java.util.concurrent.ConcurrentHashMap<Long, String> nameCache = new java.util.concurrent.ConcurrentHashMap<>();
 
     private String getUserName(Long userId) {
         if (userId == null) return null;
@@ -319,7 +361,6 @@ public class AssetApplicationService {
     }
 
     private AssetApplicationResponse toResponse(AssetApplication a) {
-        nameCache.clear();
         AssetApplicationResponse r = new AssetApplicationResponse();
         r.setId(a.getId());
         r.setTenantId(a.getTenantId());
@@ -365,5 +406,23 @@ public class AssetApplicationService {
         log.setAction(action);
         log.setDescription(description);
         assetLogMapper.insert(log);
+    }
+
+    private void cancelActiveWorkOrdersForAsset(Long assetId, Long operatorId) {
+        List<WorkOrder> activeOrders = workOrderMapper.selectList(new LambdaQueryWrapper<WorkOrder>()
+                .eq(WorkOrder::getAssetId, assetId)
+                .notIn(WorkOrder::getStatus, WorkOrderStatus.CLOSED, WorkOrderStatus.CANCELLED));
+        for (WorkOrder wo : activeOrders) {
+            String prevStatus = wo.getStatus();
+            wo.setStatus(WorkOrderStatus.CANCELLED);
+            workOrderMapper.updateById(wo);
+            WorkOrderLog woLog = new WorkOrderLog();
+            woLog.setWorkOrderId(wo.getId());
+            woLog.setFromStatus(prevStatus);
+            woLog.setToStatus(WorkOrderStatus.CANCELLED);
+            woLog.setOperatorId(operatorId);
+            woLog.setRemark("资产已报废，工单自动取消");
+            workOrderLogMapper.insert(woLog);
+        }
     }
 }

@@ -9,6 +9,8 @@ import com.chengmaomao.smartam.tenant.dto.AssetCreateRequest;
 import com.chengmaomao.smartam.tenant.dto.AssetResponse;
 import com.chengmaomao.smartam.tenant.dto.AssetUpdateRequest;
 import com.chengmaomao.smartam.tenant.entity.Asset;
+import com.chengmaomao.smartam.tenant.entity.AssetApplication;
+import com.chengmaomao.smartam.tenant.entity.AssetApplicationStatus;
 import com.chengmaomao.smartam.tenant.entity.AssetLog;
 import com.chengmaomao.smartam.tenant.entity.AssetStatus;
 import com.chengmaomao.smartam.tenant.entity.Department;
@@ -18,8 +20,7 @@ import com.chengmaomao.smartam.tenant.entity.User;
 import com.chengmaomao.smartam.tenant.entity.WorkOrder;
 import com.chengmaomao.smartam.tenant.entity.WorkOrderLog;
 import com.chengmaomao.smartam.tenant.entity.WorkOrderStatus;
-import com.chengmaomao.smartam.tenant.mapper.DepartmentMapper;
-import com.chengmaomao.smartam.tenant.mapper.UserMapper;
+import com.chengmaomao.smartam.tenant.mapper.AssetApplicationMapper;
 import com.chengmaomao.smartam.tenant.mapper.AssetLogMapper;
 import com.chengmaomao.smartam.tenant.mapper.AssetMapper;
 import com.chengmaomao.smartam.tenant.mapper.DepartmentMapper;
@@ -43,6 +44,7 @@ public class AssetService {
 
     private final AssetMapper assetMapper;
     private final AssetLogMapper assetLogMapper;
+    private final AssetApplicationMapper assetApplicationMapper;
     private final WorkOrderMapper workOrderMapper;
     private final WorkOrderLogMapper workOrderLogMapper;
     private final RegionMapper regionMapper;
@@ -55,12 +57,14 @@ public class AssetService {
     }
 
     /** 按角色注入数据范围过滤 */
-    private void applyRoleFilter(LambdaQueryWrapper<Asset> qw, JwtUser user) {
+    private void applyRoleFilter(LambdaQueryWrapper<Asset> qw, JwtUser user, String scope) {
         qw.eq(Asset::getTenantId, user.getTenantId());
         switch (user.getRole()) {
             case RoleEnum.EMPLOYEE:
-                qw.eq(Asset::getRegionId, user.getRegionId())
-                  .eq(Asset::getDeptId, user.getDeptId());
+                qw.eq(Asset::getRegionId, user.getRegionId());
+                if (!"region".equals(scope)) {
+                    qw.eq(Asset::getDeptId, user.getDeptId());
+                }
                 break;
             case RoleEnum.ENGINEER:
             case RoleEnum.ADMIN_REGION:
@@ -128,7 +132,7 @@ public class AssetService {
         asset.setPrice(req.getPrice());
         asset.setQuantity(req.getQuantity() != null ? req.getQuantity() : 1);
         asset.setUnit(req.getUnit());
-        asset.setStatus(AssetStatus.IN_STORAGE);
+        asset.setStatus(req.getUserId() != null ? AssetStatus.IN_USE : AssetStatus.IN_STORAGE);
         asset.setLocation(req.getLocation());
         asset.setPurchaseDate(req.getPurchaseDate());
         asset.setWarrantyEnd(req.getWarrantyEnd());
@@ -146,6 +150,7 @@ public class AssetService {
         Asset asset = getOwnedAsset(id);
         JwtUser user = currentUser();
         if (RoleEnum.EMPLOYEE.equals(user.getRole())
+                && asset.getDeptId() != null
                 && !asset.getDeptId().equals(user.getDeptId())) {
             throw new BusinessException("无权查看该资产");
         }
@@ -153,10 +158,11 @@ public class AssetService {
     }
 
     public IPage<AssetResponse> page(int page, int size, String status, String category,
-                                     Long regionId, Long deptId, Long userId, String keyword) {
+                                     Long regionId, Long deptId, Long userId, String keyword,
+                                     String scope) {
         JwtUser user = currentUser();
         LambdaQueryWrapper<Asset> qw = new LambdaQueryWrapper<>();
-        applyRoleFilter(qw, user);
+        applyRoleFilter(qw, user, scope);
 
         // ADMIN_TENANT 可额外按分区筛选
         if (regionId != null && RoleEnum.ADMIN_TENANT.equals(user.getRole())) {
@@ -178,6 +184,10 @@ public class AssetService {
             qw.and(w -> w.like(Asset::getName, keyword).or().like(Asset::getCode, keyword));
         }
         qw.orderByDesc(Asset::getId);
+
+        regionNameCache.clear();
+        deptNameCache.clear();
+        userNameCache.clear();
 
         Page<Asset> result = assetMapper.selectPage(Page.of(page, size), qw);
         return result.convert(this::toResponse);
@@ -208,8 +218,8 @@ public class AssetService {
                 throw new BusinessException("仅租户管理员可变更资产归属分区");
             }
         }
-        if (req.getDeptId() != null) old.setDeptId(req.getDeptId());
-        if (req.getUserId() != null) old.setUserId(req.getUserId());
+        old.setDeptId(req.getDeptId());
+        old.setUserId(req.getUserId());
         if (req.getName() != null) old.setName(req.getName());
         if (req.getCode() != null) {
             Long codeCount = assetMapper.selectCount(new LambdaQueryWrapper<Asset>()
@@ -231,8 +241,8 @@ public class AssetService {
             if (!AssetStatus.isValid(req.getStatus())) {
                 throw new BusinessException("无效的资产状态: " + req.getStatus());
             }
-            if (AssetStatus.SCRAPPED.equals(oldStatus) && !AssetStatus.SCRAPPED.equals(req.getStatus())) {
-                throw new BusinessException("已报废的资产不可恢复");
+            if (!isValidTransition(oldStatus, req.getStatus())) {
+                throw new BusinessException("不允许从 " + oldStatus + " 变更为 " + req.getStatus());
             }
             old.setStatus(req.getStatus());
         }
@@ -242,15 +252,16 @@ public class AssetService {
         if (req.getDescription() != null) old.setDescription(req.getDescription());
 
         // 校验部门、用户、分区一致性
-        if (req.getDeptId() != null || req.getUserId() != null || req.getRegionId() != null) {
-            validateAssignment(old.getRegionId(), old.getDeptId(), old.getUserId(), old.getTenantId());
-        }
+        validateAssignment(old.getRegionId(), old.getDeptId(), old.getUserId(), old.getTenantId());
 
         // 未显式设置状态时，分配领用人自动从 IN_STORAGE 切为 IN_USE
-        if (req.getStatus() == null
-                && oldUserId == null && old.getUserId() != null
-                && AssetStatus.IN_STORAGE.equals(oldStatus)) {
-            old.setStatus(AssetStatus.IN_USE);
+        if (req.getStatus() == null) {
+            if (req.getUserId() != null && AssetStatus.IN_STORAGE.equals(oldStatus)) {
+                old.setStatus(AssetStatus.IN_USE);
+            } else if (req.getUserId() == null && old.getUserId() != null
+                    && AssetStatus.IN_USE.equals(oldStatus)) {
+                old.setStatus(AssetStatus.IN_STORAGE);
+            }
         }
 
         // 构建变更描述
@@ -323,6 +334,18 @@ public class AssetService {
         return "UPDATE";
     }
 
+    private static final java.util.Map<String, java.util.Set<String>> VALID_TRANSITIONS = java.util.Map.of(
+            AssetStatus.IN_STORAGE, java.util.Set.of(AssetStatus.IN_USE, AssetStatus.SCRAPPED),
+            AssetStatus.IN_USE, java.util.Set.of(AssetStatus.IN_STORAGE, AssetStatus.IN_REPAIR, AssetStatus.SCRAPPED),
+            AssetStatus.IN_REPAIR, java.util.Set.of(AssetStatus.IN_USE, AssetStatus.SCRAPPED)
+    );
+
+    private boolean isValidTransition(String from, String to) {
+        if (from.equals(to)) return true;
+        java.util.Set<String> allowed = VALID_TRANSITIONS.get(from);
+        return allowed != null && allowed.contains(to);
+    }
+
     private static String desc(Object val) {
         return val == null ? "空" : val.toString();
     }
@@ -341,6 +364,9 @@ public class AssetService {
             User u = userMapper.selectById(userId);
             if (u == null || !u.getTenantId().equals(tenantId)) {
                 throw new BusinessException("用户不存在");
+            }
+            if (!u.getRegionId().equals(regionId)) {
+                throw new BusinessException("用户不属于该分区");
             }
             if (deptId != null && !deptId.equals(u.getDeptId())) {
                 throw new BusinessException("用户不属于该部门");
@@ -363,6 +389,7 @@ public class AssetService {
         Asset asset = getOwnedAsset(assetId);
         JwtUser user = currentUser();
         if (RoleEnum.EMPLOYEE.equals(user.getRole())
+                && asset.getDeptId() != null
                 && !asset.getDeptId().equals(user.getDeptId())) {
             throw new BusinessException("无权查看该资产");
         }
@@ -375,8 +402,12 @@ public class AssetService {
     public void delete(Long id) {
         Asset asset = getOwnedAsset(id);
         JwtUser user = currentUser();
-        if (!RoleEnum.ADMIN_TENANT.equals(user.getRole())) {
-            throw new BusinessException("仅租户管理员可删除资产");
+        if (!RoleEnum.ADMIN_TENANT.equals(user.getRole()) && !RoleEnum.ADMIN_REGION.equals(user.getRole())) {
+            throw new BusinessException("无权限删除资产");
+        }
+        if (RoleEnum.ADMIN_REGION.equals(user.getRole())
+                && !asset.getRegionId().equals(user.getRegionId())) {
+            throw new BusinessException("只能删除本分区资产");
         }
 
         Long woCount = workOrderMapper.selectCount(new LambdaQueryWrapper<WorkOrder>()
@@ -386,8 +417,19 @@ public class AssetService {
             throw new BusinessException("存在关联此资产的活跃工单，无法删除");
         }
 
+        Long pendingAppCount = assetApplicationMapper.selectCount(new LambdaQueryWrapper<AssetApplication>()
+                .eq(AssetApplication::getAssetId, id)
+                .eq(AssetApplication::getStatus, AssetApplicationStatus.PENDING));
+        if (pendingAppCount > 0) {
+            throw new BusinessException("存在该资产的待审批申领，无法删除");
+        }
+
         assetMapper.deleteById(asset.getId());
     }
+
+    private final java.util.concurrent.ConcurrentHashMap<Long, String> regionNameCache = new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.concurrent.ConcurrentHashMap<Long, String> deptNameCache = new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.concurrent.ConcurrentHashMap<Long, String> userNameCache = new java.util.concurrent.ConcurrentHashMap<>();
 
     private AssetResponse toResponse(Asset a) {
         AssetResponse r = new AssetResponse();
@@ -409,6 +451,18 @@ public class AssetService {
         r.setPurchaseDate(a.getPurchaseDate());
         r.setWarrantyEnd(a.getWarrantyEnd());
         r.setDescription(a.getDescription());
+        if (a.getRegionId() != null) {
+            r.setRegionName(regionNameCache.computeIfAbsent(a.getRegionId(),
+                    id -> { Region reg = regionMapper.selectById(id); return reg != null ? reg.getName() : null; }));
+        }
+        if (a.getDeptId() != null) {
+            r.setDeptName(deptNameCache.computeIfAbsent(a.getDeptId(),
+                    id -> { Department d = departmentMapper.selectById(id); return d != null ? d.getName() : null; }));
+        }
+        if (a.getUserId() != null) {
+            r.setUserName(userNameCache.computeIfAbsent(a.getUserId(),
+                    id -> { User u = userMapper.selectById(id); return u != null ? u.getRealName() : null; }));
+        }
         r.setCreatedAt(a.getCreatedAt());
         r.setUpdatedAt(a.getUpdatedAt());
         return r;

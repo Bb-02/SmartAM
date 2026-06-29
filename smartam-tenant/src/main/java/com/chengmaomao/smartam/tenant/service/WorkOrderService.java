@@ -108,6 +108,9 @@ public class WorkOrderService {
             if (asset == null || !asset.getTenantId().equals(me.getTenantId())) {
                 throw new BusinessException("资产不存在");
             }
+            if (!asset.getRegionId().equals(me.getRegionId())) {
+                throw new BusinessException("只能对本分区资产提交工单");
+            }
             Long dup = workOrderMapper.selectCount(new LambdaQueryWrapper<WorkOrder>()
                     .eq(WorkOrder::getAssetId, req.getAssetId())
                     .eq(WorkOrder::getReporterId, me.getUserId())
@@ -197,6 +200,10 @@ public class WorkOrderService {
             qw.eq(WorkOrder::getAssetId, assetId);
         }
         if (engineerId != null) {
+            if (RoleEnum.ENGINEER.equals(me.getRole())
+                    && !engineerId.equals(me.getUserId())) {
+                throw new BusinessException("无权查看其他工程师的工单");
+            }
             qw.eq(WorkOrder::getEngineerId, engineerId);
         }
         if (reporterId != null) {
@@ -255,6 +262,30 @@ public class WorkOrderService {
     }
 
     @Transactional
+    public WorkOrderResponse release(Long id) {
+        JwtUser me = currentUser();
+        WorkOrder wo = getOwnedWorkOrder(id);
+
+        if (!RoleEnum.ENGINEER.equals(me.getRole())) {
+            throw new BusinessException("仅工程师可释放工单");
+        }
+        if (!WorkOrderStatus.IN_WORK.equals(wo.getStatus())) {
+            throw new BusinessException("仅处理中的工单可释放");
+        }
+        if (!me.getUserId().equals(wo.getEngineerId())) {
+            throw new BusinessException("仅当前处理人可释放工单");
+        }
+
+        writeLog(wo.getId(), WorkOrderStatus.IN_WORK, WorkOrderStatus.PENDING, me.getUserId(), "工程师主动释放");
+
+        wo.setStatus(WorkOrderStatus.PENDING);
+        wo.setEngineerId(null);
+        workOrderMapper.updateById(wo);
+
+        return toResponse(wo);
+    }
+
+    @Transactional
     public WorkOrderResponse confirm(Long id, WorkOrderConfirmRequest req) {
         JwtUser me = currentUser();
         WorkOrder wo = getOwnedWorkOrder(id);
@@ -298,6 +329,12 @@ public class WorkOrderService {
     public WorkOrderResponse reject(Long id, String remark) {
         JwtUser me = currentUser();
         WorkOrder wo = getOwnedWorkOrder(id);
+
+        if (!RoleEnum.ADMIN_TENANT.equals(me.getRole())
+                && !RoleEnum.ADMIN_REGION.equals(me.getRole())
+                && !RoleEnum.EMPLOYEE.equals(me.getRole())) {
+            throw new BusinessException("无权限操作工单");
+        }
 
         // 管理员驳回 PENDING → CLOSED
         if ((RoleEnum.ADMIN_TENANT.equals(me.getRole()) || RoleEnum.ADMIN_REGION.equals(me.getRole()))

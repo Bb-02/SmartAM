@@ -47,13 +47,14 @@ public class AssetController {
             @RequestParam(required = false) Long regionId,
             @RequestParam(required = false) Long deptId,
             @RequestParam(required = false) Long userId,
-            @RequestParam(required = false) String keyword) {
-        return ApiResponse.ok(assetService.page(page, size, status, category, regionId, deptId, userId, keyword));
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String scope) {
+        return ApiResponse.ok(assetService.page(page, size, status, category, regionId, deptId, userId, keyword, scope));
     }
 
     @PutMapping("/{id}")
     public ApiResponse<AssetResponse> update(@PathVariable Long id,
-                                             @RequestBody AssetUpdateRequest req) {
+                                             @Valid @RequestBody AssetUpdateRequest req) {
         return ApiResponse.ok(assetService.update(id, req));
     }
 

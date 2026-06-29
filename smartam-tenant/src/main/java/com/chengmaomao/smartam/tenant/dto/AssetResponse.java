@@ -26,6 +26,9 @@ public class AssetResponse {
     private LocalDate purchaseDate;
     private LocalDate warrantyEnd;
     private String description;
+    private String regionName;
+    private String deptName;
+    private String userName;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

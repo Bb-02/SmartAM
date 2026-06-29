@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.chengmaomao.smartam.common.result.ApiResponse;
 import com.chengmaomao.smartam.tenant.dto.AssetApplicationCreateRequest;
 import com.chengmaomao.smartam.tenant.dto.AssetApplicationResponse;
+import com.chengmaomao.smartam.tenant.dto.AssetApplicationUpdateRequest;
 import com.chengmaomao.smartam.tenant.entity.AssetApplicationLog;
 import com.chengmaomao.smartam.tenant.service.AssetApplicationService;
 import jakarta.validation.Valid;
@@ -11,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -54,6 +56,12 @@ public class AssetApplicationController {
     public ApiResponse<AssetApplicationResponse> reject(@PathVariable Long id,
                                                          @RequestParam(required = false) String remark) {
         return ApiResponse.ok(applicationService.reject(id, remark));
+    }
+
+    @PutMapping("/{id}")
+    public ApiResponse<AssetApplicationResponse> update(@PathVariable Long id,
+                                                        @RequestBody AssetApplicationUpdateRequest req) {
+        return ApiResponse.ok(applicationService.update(id, req));
     }
 
     @PostMapping("/{id}/cancel")

@@ -24,7 +24,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         String header = request.getHeader("Authorization");
 
-        if (header == null || !header.startsWith("Bearer ")) {
+        if (header == null || !header.startsWith("Bearer ") || header.length() <= 7) {
             filterChain.doFilter(request, response);
             return;
         }
@@ -46,6 +46,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             SecurityContextHolder.getContext().setAuthentication(authentication);
         } catch (Exception e) {
             log.debug("JWT 解析失败: {}", e.getMessage());
+            response.setStatus(401);
+            response.setContentType("application/json;charset=UTF-8");
+            response.getWriter().write("{\"code\":401,\"message\":\"认证失败，请重新登录\",\"data\":null}");
+            return;
         }
 
         filterChain.doFilter(request, response);

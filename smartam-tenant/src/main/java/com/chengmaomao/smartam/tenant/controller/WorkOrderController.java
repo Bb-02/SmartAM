@@ -74,6 +74,11 @@ public class WorkOrderController {
         return ApiResponse.ok(workOrderService.resolve(id, req));
     }
 
+    @PostMapping("/{id}/release")
+    public ApiResponse<WorkOrderResponse> release(@PathVariable Long id) {
+        return ApiResponse.ok(workOrderService.release(id));
+    }
+
     @PostMapping("/{id}/confirm")
     public ApiResponse<WorkOrderResponse> confirm(@PathVariable Long id,
                                                    @Valid @RequestBody WorkOrderConfirmRequest req) {

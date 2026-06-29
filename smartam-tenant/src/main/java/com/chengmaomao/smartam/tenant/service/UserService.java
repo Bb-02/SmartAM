@@ -19,6 +19,9 @@ import com.chengmaomao.smartam.tenant.entity.RoleEnum;
 import com.chengmaomao.smartam.tenant.entity.User;
 import com.chengmaomao.smartam.tenant.entity.WorkOrder;
 import com.chengmaomao.smartam.tenant.entity.WorkOrderStatus;
+import com.chengmaomao.smartam.tenant.entity.AssetApplication;
+import com.chengmaomao.smartam.tenant.entity.AssetApplicationStatus;
+import com.chengmaomao.smartam.tenant.mapper.AssetApplicationMapper;
 import com.chengmaomao.smartam.tenant.mapper.AssetLogMapper;
 import com.chengmaomao.smartam.tenant.mapper.AssetMapper;
 import com.chengmaomao.smartam.tenant.mapper.DepartmentMapper;
@@ -33,7 +36,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
-import org.springframework.util.StringUtils;
 
 @Service
 @RequiredArgsConstructor
@@ -45,6 +47,7 @@ public class UserService {
     private final AssetMapper assetMapper;
     private final AssetLogMapper assetLogMapper;
     private final WorkOrderMapper workOrderMapper;
+    private final AssetApplicationMapper assetApplicationMapper;
     private final DepartmentMapper departmentMapper;
     private final MessageService messageService;
 
@@ -55,10 +58,9 @@ public class UserService {
     /** 按角色注入数据范围过滤 */
     private void applyRoleFilter(LambdaQueryWrapper<User> qw, JwtUser user) {
         qw.eq(User::getTenantId, user.getTenantId());
-        if (RoleEnum.ADMIN_REGION.equals(user.getRole())) {
+        if (!RoleEnum.ADMIN_TENANT.equals(user.getRole())) {
             qw.eq(User::getRegionId, user.getRegionId());
         }
-        // ADMIN_TENANT: only tenant_id
     }
 
     /** 检查当前用户是否有权操作该用户 */
@@ -176,9 +178,6 @@ public class UserService {
 
     public IPage<UserResponse> page(int page, int size, String role, Long regionId, Long deptId, String keyword) {
         JwtUser me = currentUser();
-        if (!RoleEnum.ADMIN_REGION.equals(me.getRole()) && !RoleEnum.ADMIN_TENANT.equals(me.getRole())) {
-            throw new BusinessException("无权限查看用户列表");
-        }
 
         LambdaQueryWrapper<User> qw = new LambdaQueryWrapper<>();
         applyRoleFilter(qw, me);
@@ -243,7 +242,7 @@ public class UserService {
             }
         }
         // 换部门时，名下资产归还原部门
-        if (req.getDeptId() != null) {
+        if (req.getDeptId() != null && !req.getDeptId().equals(target.getDeptId())) {
             List<Asset> userAssets = assetMapper.selectList(new LambdaQueryWrapper<Asset>()
                     .eq(Asset::getUserId, id));
             for (Asset asset : userAssets) {
@@ -298,12 +297,22 @@ public class UserService {
     public void delete(Long id) {
         User target = getOwnedUser(id);
         JwtUser me = currentUser();
-        if (!RoleEnum.ADMIN_TENANT.equals(me.getRole())) {
-            throw new BusinessException("仅租户管理员可删除用户");
+        if (!RoleEnum.ADMIN_TENANT.equals(me.getRole()) && !RoleEnum.ADMIN_REGION.equals(me.getRole())) {
+            throw new BusinessException("无权限删除用户");
         }
-        if (RoleEnum.ADMIN_TENANT.equals(target.getRole())
-                || RoleEnum.ADMIN_REGION.equals(target.getRole())) {
-            throw new BusinessException("不能删除管理员账号");
+        if (RoleEnum.ADMIN_REGION.equals(me.getRole())) {
+            if (!target.getRegionId().equals(me.getRegionId())) {
+                throw new BusinessException("只能删除本分区用户");
+            }
+            if (!RoleEnum.EMPLOYEE.equals(target.getRole()) && !RoleEnum.ENGINEER.equals(target.getRole())) {
+                throw new BusinessException("只能删除员工或工程师账号");
+            }
+        }
+        if (target.getId().equals(me.getUserId())) {
+            throw new BusinessException("不能删除自己");
+        }
+        if (RoleEnum.ADMIN_TENANT.equals(target.getRole())) {
+            throw new BusinessException("不能删除租户管理员账号");
         }
 
         Long assetCount = assetMapper.selectCount(new LambdaQueryWrapper<Asset>()
@@ -317,6 +326,13 @@ public class UserService {
                 .notIn(WorkOrder::getStatus, WorkOrderStatus.CLOSED, WorkOrderStatus.CANCELLED));
         if (woCount > 0) {
             throw new BusinessException("该用户还有活跃工单，请先处理工单后再删除");
+        }
+
+        Long pendingAppCount = assetApplicationMapper.selectCount(new LambdaQueryWrapper<AssetApplication>()
+                .eq(AssetApplication::getApplicantId, id)
+                .eq(AssetApplication::getStatus, AssetApplicationStatus.PENDING));
+        if (pendingAppCount > 0) {
+            throw new BusinessException("该用户还有待审批的资产申领，请先处理后再删除");
         }
 
         userMapper.deleteById(target.getId());

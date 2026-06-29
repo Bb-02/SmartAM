@@ -11,6 +11,7 @@ import com.chengmaomao.smartam.tenant.dto.DepartmentTreeNode;
 import com.chengmaomao.smartam.tenant.dto.DepartmentUpdateRequest;
 import com.chengmaomao.smartam.tenant.entity.Asset;
 import com.chengmaomao.smartam.tenant.entity.AssetLog;
+import com.chengmaomao.smartam.tenant.entity.AssetStatus;
 import com.chengmaomao.smartam.tenant.entity.Department;
 import com.chengmaomao.smartam.tenant.entity.Region;
 import com.chengmaomao.smartam.tenant.entity.RoleEnum;
@@ -121,11 +122,10 @@ public class DepartmentService {
     }
 
     public List<DepartmentTreeNode> tree() {
-        checkAdmin();
         JwtUser me = currentUser();
         LambdaQueryWrapper<Department> qw = new LambdaQueryWrapper<>();
         qw.eq(Department::getTenantId, me.getTenantId());
-        if (RoleEnum.ADMIN_REGION.equals(me.getRole())) {
+        if (!RoleEnum.ADMIN_TENANT.equals(me.getRole())) {
             qw.eq(Department::getRegionId, me.getRegionId());
         }
         qw.orderByAsc(Department::getParentId).orderByAsc(Department::getId);
@@ -158,15 +158,16 @@ public class DepartmentService {
     }
 
     public IPage<DepartmentResponse> page(int page, int size, Long regionId, Long parentId, String keyword) {
-        checkAdmin();
         JwtUser me = currentUser();
 
         LambdaQueryWrapper<Department> qw = new LambdaQueryWrapper<>();
         qw.eq(Department::getTenantId, me.getTenantId());
-        if (RoleEnum.ADMIN_REGION.equals(me.getRole())) {
+        if (RoleEnum.ADMIN_TENANT.equals(me.getRole())) {
+            if (regionId != null) {
+                qw.eq(Department::getRegionId, regionId);
+            }
+        } else {
             qw.eq(Department::getRegionId, me.getRegionId());
-        } else if (regionId != null) {
-            qw.eq(Department::getRegionId, regionId);
         }
         if (parentId != null) {
             qw.eq(Department::getParentId, parentId);
@@ -250,7 +251,11 @@ public class DepartmentService {
             }
             for (Asset asset : assets) {
                 asset.setDeptId(null);
+                asset.setUserId(null);
                 asset.setRegionId(defaultRegion.getId());
+                if (AssetStatus.IN_USE.equals(asset.getStatus())) {
+                    asset.setStatus(AssetStatus.IN_STORAGE);
+                }
                 assetMapper.updateById(asset);
                 AssetLog log = new AssetLog();
                 log.setTenantId(asset.getTenantId());
