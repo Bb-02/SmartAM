@@ -63,7 +63,8 @@ public class AssetService {
             case RoleEnum.EMPLOYEE:
                 qw.eq(Asset::getRegionId, user.getRegionId());
                 if (!"region".equals(scope)) {
-                    qw.eq(Asset::getDeptId, user.getDeptId());
+                    qw.and(w -> w.eq(Asset::getDeptId, user.getDeptId())
+                            .or().eq(Asset::getUserId, user.getUserId()));
                 }
                 break;
             case RoleEnum.ENGINEER:
@@ -150,6 +151,7 @@ public class AssetService {
         Asset asset = getOwnedAsset(id);
         JwtUser user = currentUser();
         if (RoleEnum.EMPLOYEE.equals(user.getRole())
+                && !user.getUserId().equals(asset.getUserId())
                 && asset.getDeptId() != null
                 && !asset.getDeptId().equals(user.getDeptId())) {
             throw new BusinessException("无权查看该资产");
@@ -237,6 +239,7 @@ public class AssetService {
         if (req.getPrice() != null) old.setPrice(req.getPrice());
         if (req.getQuantity() != null) old.setQuantity(req.getQuantity());
         if (req.getUnit() != null) old.setUnit(req.getUnit());
+        boolean statusChanged = false;
         if (req.getStatus() != null) {
             if (!AssetStatus.isValid(req.getStatus())) {
                 throw new BusinessException("无效的资产状态: " + req.getStatus());
@@ -244,7 +247,10 @@ public class AssetService {
             if (!isValidTransition(oldStatus, req.getStatus())) {
                 throw new BusinessException("不允许从 " + oldStatus + " 变更为 " + req.getStatus());
             }
-            old.setStatus(req.getStatus());
+            if (!req.getStatus().equals(oldStatus)) {
+                old.setStatus(req.getStatus());
+                statusChanged = true;
+            }
         }
         if (req.getLocation() != null) old.setLocation(req.getLocation());
         if (req.getPurchaseDate() != null) old.setPurchaseDate(req.getPurchaseDate());
@@ -254,11 +260,11 @@ public class AssetService {
         // 校验部门、用户、分区一致性
         validateAssignment(old.getRegionId(), old.getDeptId(), old.getUserId(), old.getTenantId());
 
-        // 未显式设置状态时，分配领用人自动从 IN_STORAGE 切为 IN_USE
-        if (req.getStatus() == null) {
+        // 未显式变更状态时，根据领用人变动自动切换状态
+        if (!statusChanged) {
             if (req.getUserId() != null && AssetStatus.IN_STORAGE.equals(oldStatus)) {
                 old.setStatus(AssetStatus.IN_USE);
-            } else if (req.getUserId() == null && old.getUserId() != null
+            } else if (req.getUserId() == null && oldUserId != null
                     && AssetStatus.IN_USE.equals(oldStatus)) {
                 old.setStatus(AssetStatus.IN_STORAGE);
             }
@@ -389,6 +395,7 @@ public class AssetService {
         Asset asset = getOwnedAsset(assetId);
         JwtUser user = currentUser();
         if (RoleEnum.EMPLOYEE.equals(user.getRole())
+                && !user.getUserId().equals(asset.getUserId())
                 && asset.getDeptId() != null
                 && !asset.getDeptId().equals(user.getDeptId())) {
             throw new BusinessException("无权查看该资产");

@@ -206,6 +206,7 @@ public class UserService {
     @Transactional
     public UserResponse update(Long id, UserUpdateRequest req) {
         User target = getOwnedUser(id);
+        Long oldDeptId = target.getDeptId();
 
         if (req.getRealName() != null) target.setRealName(req.getRealName());
         if (req.getPhone() != null) target.setPhone(req.getPhone());
@@ -242,7 +243,7 @@ public class UserService {
             }
         }
         // 换部门时，名下资产归还原部门
-        if (req.getDeptId() != null && !req.getDeptId().equals(target.getDeptId())) {
+        if (req.getDeptId() != null && !req.getDeptId().equals(oldDeptId)) {
             List<Asset> userAssets = assetMapper.selectList(new LambdaQueryWrapper<Asset>()
                     .eq(Asset::getUserId, id));
             for (Asset asset : userAssets) {

@@ -1,5 +1,7 @@
 package com.chengmaomao.smartam.tenant.entity;
 
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.chengmaomao.smartam.common.base.BaseEntity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -12,7 +14,9 @@ import java.time.LocalDate;
 public class Asset extends BaseEntity {
     private Long tenantId;
     private Long regionId;
+    @TableField(updateStrategy = FieldStrategy.IGNORED)
     private Long deptId;
+    @TableField(updateStrategy = FieldStrategy.IGNORED)
     private Long userId;
     private String name;
     private String code;
