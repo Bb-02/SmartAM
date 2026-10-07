@@ -63,3 +63,6 @@ application-local.yml
 
 ### Claude Code ###
 .claude/
+docs/
+docs/journal/
+docs/frontend/
