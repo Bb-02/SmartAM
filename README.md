@@ -1,5 +1,15 @@
 # SmartAM
 
+---
+
+![Java](https://img.shields.io/badge/Java-17-ED8B00?logo=openjdk&logoColor=white&style=flat-square)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.4.5-6DB33F?logo=springboot&logoColor=white&style=flat-square)
+![MyBatis-Plus](https://img.shields.io/badge/MyBatis--Plus-3.5.9-D6382A?style=flat-square)
+![MySQL](https://img.shields.io/badge/MySQL-8.0-4479A1?logo=mysql&logoColor=white&style=flat-square)
+![Maven](https://img.shields.io/badge/Maven-3.9.16-C71A36?logo=apachemaven&logoColor=white&style=flat-square)
+
+---
+
 SaaS 企业级资产清查与工单流转系统。面向中大型公司的固定资产管理后台，提供多租户、多分区、多部门的数据隔离，覆盖资产入库、领用、维修、报废的全生命周期管理，以及报修工单从提交到确认结单的完整流转闭环。
 
 ## 功能特性
